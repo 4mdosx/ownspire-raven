@@ -19,7 +19,8 @@
     "hash-password": "node scripts/hash-password.mjs",
     "pm2:start": "npm run build && pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop ownspire-raven",
-    "pm2:restart": "pm2 restart ownspire-raven"
+    "pm2:restart": "pm2 restart ownspire-raven",
+    "verify:bff": "node --conditions react-server --import tsx scripts/verify-agent-config-bff.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
