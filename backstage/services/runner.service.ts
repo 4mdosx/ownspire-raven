@@ -3,12 +3,12 @@ import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { StringDecoder } from 'node:string_decoder'
 import { dbRunFinish, dbRunGet, dbRunInsert, dbRunList, dbRunPrune, type RunRow } from '@/backstage/db/database'
 import { RAVEN_VERSION } from '@/config/env'
 import { getConfig } from '@/backstage/lib/config'
 import { humanBytes } from '@/backstage/lib/format'
 import { runTempName } from '@/backstage/lib/ids'
+import { killProcessGroup, OutputSink } from '@/backstage/lib/proc'
 import { isInside, SandboxError } from '@/backstage/lib/sandbox'
 
 /**
@@ -404,76 +404,6 @@ function normalizeArgs(value: unknown): string[] {
     throw new SandboxError('args_too_long', `参数总长度超过 ${humanBytes(MAX_ARGS_BYTES)}，请改用脚本内的配置文件。`, 400)
   }
   return args
-}
-
-/**
- * 一路输出的采集器。
- *
- * 两个约束同时成立：
- * - **按字节封顶**（`maxOutputBytes` 是字节），而字符串长度不是字节数 ——
- *   中文脚本输出尤其明显。所以先按字节攒 Buffer，最后一次性解码。
- * - **封顶后仍然继续读**：`push()` 直接返回，但调用方照旧把 chunk 交过来，
- *   管道因此不会反压。截断之后也不再回调 `onStdout`：继续推流只会把浏览器
- *   的内存吃光，而这时前端已经有「已截断」的事实。
- */
-class OutputSink {
-  private readonly chunks: Buffer[] = []
-  private readonly decoder = new StringDecoder('utf8')
-  private bytes = 0
-  private truncated = false
-
-  constructor(private readonly limit: number, private readonly onChunk?: (chunk: string) => void) {}
-
-  push(chunk: Buffer): void {
-    if (this.truncated) return
-    const room = this.limit - this.bytes
-    if (chunk.length <= room) {
-      this.chunks.push(chunk)
-      this.bytes += chunk.length
-      this.onChunk?.(this.decoder.write(chunk))
-      return
-    }
-    if (room > 0) {
-      const head = chunk.subarray(0, room)
-      this.chunks.push(head)
-      this.bytes += room
-      this.onChunk?.(this.decoder.write(head))
-    }
-    this.truncated = true
-  }
-
-  finish(): void {
-    if (this.truncated) return
-    const tail = this.decoder.end()
-    if (tail !== '') this.onChunk?.(tail)
-  }
-
-  get isTruncated(): boolean {
-    return this.truncated
-  }
-
-  text(): string {
-    // 权威文本按字节拼完再解码，不依赖回调路径。
-    return Buffer.concat(this.chunks).toString('utf8')
-  }
-}
-
-function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  const pid = child.pid
-  if (pid === undefined) return
-  try {
-    // 负 pid = 整个进程组。孙子进程（ffmpeg/yt-dlp 是典型）就在这里被一起收掉。
-    process.kill(-pid, signal)
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ESRCH') return // 组已经没了，正常收尾
-    // 没有权限或没有进程组（比如已经 setsid 走了）：退回杀直接子进程。
-    try {
-      child.kill(signal)
-    } catch {
-      // 已经退出了。
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

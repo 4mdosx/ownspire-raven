@@ -104,6 +104,16 @@ async function main(): Promise<void> {
   }
 
   console.log('')
+  console.log('── 真实工具：FS Tools 与 shell ───────────────────')
+  const tools = await loadOptional('./verify-tools')
+  const toolChecks = tools?.['runToolChecks']
+  if (typeof toolChecks === 'function') {
+    await (toolChecks as (c: Checker) => Promise<void>)(checker)
+  } else {
+    checker.skip('工具段', 'scripts/verify-tools.ts 还没有可用的 runToolChecks 导出')
+  }
+
+  console.log('')
   console.log('── 产物一致性 ─────────────────────────────────')
   await checker.check('部署占位配置能被解析，且 rootPath 是数据卷下的专用子目录', async () => {
     const { loadConfigFrom } = await import('@/backstage/lib/config')

@@ -7,6 +7,7 @@
  */
 
 import './files'
+import './shell'
 import './workspace'
 
 export { allTools, findTool, listToolsData, toolNames } from './registry'

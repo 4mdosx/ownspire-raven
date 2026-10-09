@@ -37,6 +37,14 @@
     },
     "tempDir": "tmp"
   },
+  "shell": {
+    "//enabled": "shell 工具（raven.shell.exec）的总开关。关掉后工具仍注册，但出现在 listTools 的 disabled[] 里 —— 明说「存在但未开放」好过让调用方以为 raven 没这个工具。⚠️ 不复用 workspace.allowScriptExecution：那个的语义是「允许跑 scripts/ 目录里的脚本」，两者混成一个开关等于翻一下就交出整台机器。",
+    "enabled": true,
+    "//timeoutMs": "单条命令的墙钟超时（毫秒）。上限 600000。",
+    "timeoutMs": 60000,
+    "//allowShellSyntax": "允许 command:'sh' + args:['-c', '...'] 这种把整行交给 shell 解释的用法。主路径（command + args 直接 spawn）不受它影响。",
+    "allowShellSyntax": true
+  },
   "services": {
     "//registryFile": "服务定义文件。相对 rootPath 或绝对路径；不写则用 <dataDir>/services.json。",
     "registryFile": "services.json",

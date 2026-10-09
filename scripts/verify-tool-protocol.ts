@@ -101,7 +101,12 @@ export async function runToolProtocolChecks(checker: Checker): Promise<void> {
       }
       if (typeof meta.retryable !== 'boolean') throw new Error(`${code} 缺 retryable`)
     }
-    if (TOOL_ERROR_CODES.cancelled.http === TOOL_ERROR_CODES.timeout.http) {
+    // ⚠️ 必须显式转number：`as const` 让每个 http 成了字面量类型，
+    // TS 会把「两个不同字面量比相等」判成永假（TS2367）而报错 ——
+    // 而这正是这条断言要检查的东西。
+    const cancelledHttp: number = TOOL_ERROR_CODES.cancelled.http
+    const timeoutHttp: number = TOOL_ERROR_CODES.timeout.http
+    if (cancelledHttp === timeoutHttp) {
       throw new Error('cancelled 与 timeout 必须是不同的状态 —— 两者的处理方式完全不同')
     }
   })
@@ -126,17 +131,47 @@ export async function runToolProtocolChecks(checker: Checker): Promise<void> {
     if (!Array.isArray(data.disabled)) throw new Error('disabled 必须是数组（空也要给）')
   })
 
-  await checker.check('v1 只开放只读工具，且工具名带命名空间前缀', () => {
+  await checker.check('工具名带命名空间前缀，且 risk 自报得诚实', () => {
     const data = listToolsData('workspace')
-    const notRead = data.tools.filter((tool) => tool.risk !== 'read')
-    if (notRead.length > 0) {
-      throw new Error(
-        `v1 开放的应全是 read，这几个不是：${notRead.map((t) => `${t.name}(${t.risk})`).join(', ')}`
-      )
-    }
     for (const tool of data.tools) {
       if (!tool.name.startsWith('raven.')) {
         throw new Error(`工具名应带 raven. 前缀，避免和 runtime 侧的工具撞名：${tool.name}`)
+      }
+    }
+    // ⚠️ 这条断言不写「哪些工具该存在」——**那种断言会随功能增长腐烂**，
+    // 每次加工具都要来改一次，改久了就没人看它了。写死的是两条不会变的纪律：
+    // ① risk 由工具自报，不许「按参数猜」；
+    //    ② destructive 必须带 confirmationPhrase，UI 才有机会要求用户确认。
+    const byName = new Map(data.tools.map((tool) => [tool.name, tool]))
+    const expected: Array<[string, string]> = [
+      ['raven.files.read', 'read'],
+      ['raven.files.write', 'write'],
+      ['raven.files.remove', 'destructive'],
+      ['raven.shell.exec', 'write'],
+    ]
+    for (const [name, risk] of expected) {
+      const tool = byName.get(name)
+      if (!tool) throw new Error(`缺工具：${name}`)
+      if (tool.risk !== risk) throw new Error(`${name} 的 risk 应为 ${risk}，实际 ${tool.risk}`)
+    }
+    for (const tool of data.tools) {
+      if (tool.risk === 'destructive' && !tool.confirmationPhrase) {
+        throw new Error(`破坏性工具 ${tool.name} 必须带 confirmationPhrase，否则 UI 无从要求确认`)
+      }
+    }
+  })
+
+  await checker.check('会覆盖目标的工具，默认都不覆盖', () => {
+    // `overwrite` 是一个「不说就是吃掉别人文件」的开关，默认值必须是 false。
+    // 这条检查的是**默认值**，不是描述文本 —— 模型读的是 description，
+    // 而真正兜底的是代码。
+    const data = listToolsData('workspace')
+    for (const name of ['raven.files.move', 'raven.files.copy']) {
+      const tool = data.tools.find((item) => item.name === name)
+      if (!tool) throw new Error(`缺工具：${name}`)
+      const schema = tool.inputSchema.properties?.overwrite as { default?: unknown } | undefined
+      if (schema?.default !== false) {
+        throw new Error(`${name} 的 overwrite 默认值应为 false，实际 ${JSON.stringify(schema?.default)}`)
       }
     }
   })

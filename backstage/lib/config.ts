@@ -140,6 +140,21 @@ const configSchema = z.object({
       tempDir: z.string().optional(),
     })
     .optional(),
+  /**
+   * shell 工具的独立开关。
+   *
+   * ⚠️ **不复用 `workspace.allowScriptExecution`** —— 那个的语义是
+   * 「允许执行 `scripts/` 目录里的脚本」，范围明确。把它当成「允许任意 shell」
+   * 会让翻一个开关就等于交出整台机器，两个语义必须分开。
+   */
+  shell: z
+    .object({
+      enabled: z.boolean().optional(),
+      timeoutMs: z.number().int().min(1000).max(600_000).optional(),
+      /** 允许 `sh -c` 这类把整行命令交给 shell 解释。关掉之后只能直接 spawn 可执行文件。 */
+      allowShellSyntax: z.boolean().optional(),
+    })
+    .optional(),
   services: z
     .object({
       registryFile: z.string().optional(),
@@ -330,6 +345,14 @@ function buildConfig(file: string, raw: unknown): RavenConfig {
         maxConcurrent: input.scripts?.execution?.maxConcurrent ?? 2,
       },
       tempDir,
+    },
+    shell: {
+      // 默认开：raven 的定位就是 Execution Environment，工具默认不可用等于没做。
+      // 要收紧就把 enabled 设成 false —— 工具会出现在 listTools 的 disabled[] 里，
+      // 「存在但未开放」比「查不到」好排查。
+      enabled: input.shell?.enabled ?? true,
+      timeoutMs: input.shell?.timeoutMs ?? 60_000,
+      allowShellSyntax: input.shell?.allowShellSyntax ?? true,
     },
     services: {
       registryFile: input.services?.registryFile,

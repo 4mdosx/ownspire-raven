@@ -203,12 +203,22 @@ export type ScriptsConfig = {
   tempDir: string
 }
 
+export type ShellConfig = {
+  /** shell 工具的总开关。关掉后工具仍注册，但出现在 listTools 的 disabled[] 里。 */
+  enabled: boolean
+  /** 单条命令的墙钟超时（毫秒）。 */
+  timeoutMs: number
+  /** 允许 `sh -c` 这类把整行交给 shell 解释。关掉后只能直接 spawn 可执行文件。 */
+  allowShellSyntax: boolean
+}
+
 export type RavenConfig = {
   rootPath: string
   workspace: WorkspaceConfig
   clipboard: ClipboardConfig
   auth: AuthConfig
   scripts: ScriptsConfig
+  shell: ShellConfig
   services: ServicesConfig
   /** 配置来源文件，供 /api/system/config 回显（不返回密码）。 */
   sourceFile: string

@@ -128,6 +128,46 @@ export const TOOL_ERROR_CODES = {
 
 export type ToolErrorCode = keyof typeof TOOL_ERROR_CODES
 
+/**
+ * 沙箱错误码 → 协议错误码。
+ *
+ * ⚠️ **必须有这张表**，因为 `toToolError` 认不出的 code 一律降级成 `internal_error`
+ * （500 + 可重试）。而降级在这里是**有害的**：`exists`（目标已存在）、
+ * `invalid_path`（路径里不能有 `..`）都是调用方换个参数就能救回来的，
+ * 说成「raven 崩了、重试吧」会让 runtime 反复重试一个永远失败的请求。
+ *
+ * 归并到 `invalid_input` 的判据只有一条：**改参数能不能救。**
+ * 能 → `invalid_input`（它的 message 值得原样喂回模型）；
+ * 不能 → `outside_root` / `permission_denied` / `quota_exceeded` 这类环境或权限问题。
+ *
+ * 这里写的是**字符串**而不是 import `SandboxError` —— 协议层要能被验证脚本
+ * 在 CLI 里单独加载（见 AGENTS.md：`server-only` 在 CLI 里会炸）。
+ */
+export const SANDBOX_ERROR_CODES: Record<string, ToolErrorCode> = {
+  // 同名
+  outside_root: 'outside_root',
+  not_found: 'not_found',
+  permission_denied: 'permission_denied',
+  quota_exceeded: 'quota_exceeded',
+  // shell 的开关与「命令不存在」——都不是 raven 崩了
+  shell_disabled: 'permission_denied',
+  shell_syntax_disabled: 'permission_denied',
+  command_not_found: 'not_found',
+  spawn_failed: 'internal_error',
+  // 「参数/目标不对，改了再来」—— 全部归invalid_input
+  invalid_path: 'invalid_input',
+  invalid_script: 'invalid_input',
+  exists: 'invalid_input',
+  is_directory: 'invalid_input',
+  not_a_directory: 'invalid_input',
+  not_a_file: 'invalid_input',
+  empty_text: 'invalid_input',
+  empty_entry: 'invalid_input',
+  args_too_long: 'invalid_input',
+  script_too_large: 'invalid_input',
+  symlink_loop: 'invalid_input',
+}
+
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000
 export const MAX_EXECUTION_TIMEOUT_MS = 600_000
 export const EXECUTION_ID_PREFIX = 'exe_'
@@ -155,15 +195,18 @@ export function resolveWorkspaceId(requested: unknown): string | null {
 /**
  * 把任意异常归一成协议错误。
  *
- * 沙箱错误（`SandboxError`）的 code 与协议码同名，所以直接认；
- * 其余一律 `internal_error` —— 但 **message 原样保留**，因为运维要看。
+ * 三级归并，顺序不能换：
+ *
+ * 1. 协议层自己抛的（`ToolProtocolError`）—— 码就是协议码。
+ * 2. 沙箱错误（`SandboxError`）—— 先查 `SANDBOX_ERROR_CODES` 映射表。
+ * 3. 其余一律 `internal_error` —— 但 **message 原样保留**，因为运维要看。
  */
 export function toToolError(error: unknown): ToolError {
-  if (error instanceof Error && 'code' in error) {
-    const code = (error as { code?: unknown }).code
-    if (typeof code === 'string' && code in TOOL_ERROR_CODES) {
-      const known = code as ToolErrorCode
-      return { code: known, message: error.message, retryable: TOOL_ERROR_CODES[known].retryable }
+  const raw = error instanceof Error && 'code' in error ? (error as { code?: unknown }).code : undefined
+  if (typeof raw === 'string') {
+    const known = raw in TOOL_ERROR_CODES ? (raw as ToolErrorCode) : SANDBOX_ERROR_CODES[raw]
+    if (known) {
+      return { code: known, message: error instanceof Error ? error.message : String(error), retryable: TOOL_ERROR_CODES[known].retryable }
     }
   }
   const message = error instanceof Error ? error.message : String(error)

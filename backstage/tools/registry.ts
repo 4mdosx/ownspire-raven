@@ -138,3 +138,58 @@ export function optionalNumber(args: Record<string, unknown>, field: string): nu
   }
   return value
 }
+
+export function optionalBoolean(args: Record<string, unknown>, field: string): boolean | undefined {
+  const value = args[field]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'boolean') {
+    const error = new Error(`参数 ${field} 必须是 true 或 false。`)
+    ;(error as Error & { code?: string }).code = 'invalid_input'
+    throw error
+  }
+  return value
+}
+
+/**
+ * 取一个布尔参数，**没给就落default**。
+ *
+ * 覆盖类操作（move/copy 的 `overwrite`）必须走这个而不是 `optionalBoolean`：
+ * 「没说」在协议里等于「否」，否则模型漏写一个字段就会静默吃掉目标文件。
+ */
+export function booleanArg(args: Record<string, unknown>, field: string, fallback: boolean): boolean {
+  return optionalBoolean(args, field) ?? fallback
+}
+
+/** 取一个字符串数组参数，逐项校验。删除工具用它 —— `paths: 'a'` 这种形状很常见。 */
+export function requireStringArray(args: Record<string, unknown>, field: string): string[] {
+  const value = args[field]
+  if (!Array.isArray(value) || value.length === 0) {
+    const error = new Error(`参数 ${field} 必须是非空字符串数组。`)
+    ;(error as Error & { code?: string }).code = 'invalid_input'
+    throw error
+  }
+  return value.map((item, index) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      const error = new Error(`参数 ${field}[${index}] 必须是非空字符串。`)
+      ;(error as Error & { code?: string }).code = 'invalid_input'
+      throw error
+    }
+    return item
+  })
+}
+
+/** 带上限的文本参数。模型一次贴进来 10 MiB 是常态，不封顶会把内存吃穿。 */
+export function requireText(args: Record<string, unknown>, field: string, maxChars: number): string {
+  const value = args[field]
+  if (typeof value !== 'string') {
+    const error = new Error(`参数 ${field} 必须是字符串。`)
+    ;(error as Error & { code?: string }).code = 'invalid_input'
+    throw error
+  }
+  if (value.length > maxChars) {
+    const error = new Error(`参数 ${field} 长度 ${value.length} 超过上限 ${maxChars}。请分批写入。`)
+    ;(error as Error & { code?: string }).code = 'invalid_input'
+    throw error
+  }
+  return value
+}
