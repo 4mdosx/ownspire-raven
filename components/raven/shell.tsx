@@ -24,6 +24,9 @@ const NAV = [
   { href: '/files', label: '文件' },
   { href: '/clipboard', label: '剪切板' },
   { href: '/scripts', label: '脚本' },
+  // 厂商/端点/模型的增删改。与 Agent 页分开是因为职责不同：
+  // 那页是「用模型」，这页是「配模型」。
+  { href: '/models', label: '模型' },
 ] as const
 
 export function RavenShell({

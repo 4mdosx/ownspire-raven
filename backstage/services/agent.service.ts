@@ -34,7 +34,7 @@ function agentToken(): string {
 }
 
 export type AgentFetchOptions = {
-  method?: 'GET' | 'POST' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: unknown
   signal?: AbortSignal
 }
