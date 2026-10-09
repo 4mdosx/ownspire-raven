@@ -1,0 +1,34 @@
+name: ownspire
+
+services:
+  raven:
+    image: ghcr.io/4mdosx/ownspire-raven:${RAVEN_TAG:?set RAVEN_TAG to main or a 7-character commit}
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - /srv/ownspire/compose/raven.env
+    ports:
+      - "127.0.0.1:5801:5800"
+    volumes:
+      # ⚠️ 整份数据都在这个卷上，包括**配置文件本身**：
+      #   raven.config.json  真实配置（含账号密码，权限 600）
+      #   raven.db           元数据：剪切板条目、健康样本、指标、运行历史
+      #   workspace/         文件管理器唯一可见的树（配额只算这一棵）
+      #   clipboard/         剪切板附件
+      #   scripts/ tmp/      脚本运行台与临时工作区
+      # 所以备份必须把整个卷打走 —— 只备 raven.db 会恢复出「条目都在、
+      # 文件全丢」的界面，而那不是报错，是最糟的那种静默失败。
+      - /srv/ownspire/data/raven:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5800/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # raven 首次启动要建目录、建表、读配置；20s 与 atlas / navi 一致。
+      start_period: 20s

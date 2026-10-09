@@ -1,0 +1,53 @@
+{
+  "//": "本机开发配置。复制成 raven.config.local.json 再改 —— 那个名字在 .gitignore 里。",
+  "//rootPath": "受管根目录。文件管理器只看得到它下面的 workspace/。",
+  "rootPath": "~/.local/share/ownspire-raven",
+  "workspace": {
+    "name": "workspace",
+    "//quotaBytes": "目录总大小上限，单位字节。null = 不限。10 GiB = 10737418240。",
+    "quotaBytes": 10737418240,
+    "allowScriptExecution": true,
+    "scriptsDir": "scripts"
+  },
+  "clipboard": {
+    "//": "每次粘贴创建一条记录，超出 maxItems 从队尾淘汰。",
+    "maxItems": 200,
+    "maxTextBytes": 262144
+  },
+  "auth": {
+    "//": "单账号、全权限。password 是明文；想避免明文就用 npm run hash-password 生成 passwordHash 并删掉 password。",
+    "username": "admin",
+    "password": "change-me",
+    "sessionHours": 168,
+    "loginRateLimit": {
+      "windowSeconds": 300,
+      "maxFailures": 10
+    }
+  },
+  "scripts": {
+    "//env": "注入到每个脚本进程。占位符：{root} {workspace} {uploads} {tmp} {clipboard} {scripts}",
+    "env": {
+      "TZ": "Asia/Shanghai",
+      "BILI_QUALITY": "1080p"
+    },
+    "execution": {
+      "timeoutMs": 120000,
+      "maxOutputBytes": 1048576,
+      "maxConcurrent": 2
+    },
+    "tempDir": "tmp"
+  },
+  "services": {
+    "//registryFile": "服务定义文件。相对 rootPath 或绝对路径；不写则用 <dataDir>/services.json。",
+    "registryFile": "services.json",
+    "sampleIntervalSeconds": 30,
+    "historyLimit": 500,
+    "metricHistoryLimit": 500,
+    "collect": true,
+    "//registrationToken": "取消注释并填一个长随机串，才会打开 /api/ingest/register 与 /api/ingest/metrics。",
+    "registrationToken": "please-change-this-registration-token",
+    "publicBaseUrl": "http://127.0.0.1:5800",
+    "//defs": "内联服务定义（优先级低于 registryFile 里的同名 id）。完整字段说明见 docs/03-service-registry.md。",
+    "defs": []
+  }
+}

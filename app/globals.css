@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+/**
+ * Tailwind 4 的主题。
+ *
+ * ⚠️ 这一段的写法是被构建错误逼出来的，别改回 Tailwind 3 那套：
+ * 先按老写法把变量塞进 `:root`、再在 `@layer base` 里 `@apply border-border`，
+ * 构建直接报 `Cannot apply unknown utility class 'border-border'` ——
+ * Tailwind 4 里 `@apply` **不能**引用 `@theme` 定义的 utility。
+ * 正确做法就是下面这样：`:root` 放原始 CSS 变量，`@theme inline` 把它们
+ * 映射成 utility 名（`--color-border` → `border-border` / `bg-border`），
+ * 默认边框色用普通 CSS 给，不用 `@apply`。
+ *
+ * ⚠️ `@theme inline` 里的 `var()` 是**原样输出**的（inline = 不复制值），
+ * 所以 `--radius-*` 的引用必须自洽：先定义 `--radius`，再用 calc 推 small/large。
+ * 顺序写反在部分构建版本里会得到空值。
+ *
+ * 配色沿用 creative-atlas / navi 的中性灰阶，只做了一处扩展：
+ * raven 是「运维看板」，需要在同一个页面里一眼区分 ok / warn / down，
+ * 所以额外给了三档状态色，并且**状态组件同时带文字**（见 StatusPill 的注释）。
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #171717;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #f5f5f5;
+  --accent-foreground: #171717;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #a3a3a3;
+
+  --status-ok: #059669;
+  --status-warn: #d97706;
+  --status-down: #dc2626;
+  --status-unknown: #737373;
+
+  --radius: 0.5rem;
+}
+
+/**
+ * `@variant dark` 而不是 `@media (prefers-color-scheme: dark)`：raven 跑在
+ * 运维自己的机器上，跟随系统的暗色模式是默认行为；用 `@variant` 才能让
+ * `<html class="dark">` 这种手动切换（将来要加的话）也走同一条规则。
+ */
+@variant dark {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --card: #171717;
+    --card-foreground: #ededed;
+    --primary: #ededed;
+    --primary-foreground: #171717;
+    --secondary: #262626;
+    --secondary-foreground: #ededed;
+    --muted: #262626;
+    --muted-foreground: #8a8a8a;
+    --accent: #262626;
+    --accent-foreground: #ededed;
+    --destructive: #ef4444;
+    --destructive-foreground: #fafafa;
+    --border: #404040;
+    --input: #404040;
+    --ring: #737373;
+
+    --status-ok: #34d399;
+    --status-warn: #fbbf24;
+    --status-down: #f87171;
+    --status-unknown: #8a8a8a;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-down: var(--status-down);
+  --color-status-unknown: var(--status-unknown);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+/**
+ * 默认边框色。
+ *
+ * ⚠️ 这是普通 CSS，**不是** `@layer base { * { @apply border-border } }`。
+ * Tailwind 4 的 preflight 把 `border-style: solid` 和宽度归零都做了，但没有给
+ * 颜色 —— 缺了这一段，`class="border"` 会渲染成 currentColor 的实心黑边。
+ */
+*,
+::before,
+::after {
+  border-color: var(--color-border);
+}
+
+html {
+  /* 移动端 Safari 上 `h-svh` 之外还有一层橡皮筋，滚动到边界会露出白底。 */
+  background-color: var(--color-background);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  /* 界面全中文，默认要带上中文字体栈；纯 `system-ui` 在 Windows 上会落到
+     一份对中文很差劲的字体。 */
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/**
+ * 等宽区域（剪切板正文、脚本日志、文件预览）。
+ *
+ * ⚠️ `white-space: pre-wrap` + `overflow-wrap: anywhere` 这两条一起才有用：
+ * 只有 pre-wrap 时，一条没有空格的超长 base64 会把整个容器撑出横向滚动条，
+ * 把旁边的按钮顶到屏幕外 —— 剪切板里这种内容非常常见。
+ */
+.raven-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+/* 细滚动条。默认滚动条在暗色下是亮色的，很刺眼。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/**
+ * 日志面板的滚动锚。
+ *
+ * 自动滚到底用 CSS 而不是 `scrollIntoView`：后者会把**整页**一起滚下去，
+ * 在 Dashboard 上表现是「日志一刷新页面就跳」。`overflow-anchor` 让浏览器
+ * 在内容追加时保持视觉位置。
+ */
+.raven-log {
+  overflow-anchor: none;
+}

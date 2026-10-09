@@ -1,0 +1,176 @@
+{
+  "//": "服务注册表 —— 这是 raven 第 3 项功能的数据结构本体。完整字段说明见 docs/03-service-registry.md。",
+  "//1": "内联定义（config.services.defs）与这份文件按 id 合并，**文件优先**；文件里的可以被 API 改写，内联的不行。",
+  "//2": "探针按顺序跑，全部 ok → 服务 ok；部分 ok → warn；全挂 → down。",
+  "//3": "script 指标脚本的 stdout 约定：{ \"metrics\": [{ \"name\": \"db_bytes\", \"value\": 123, \"unit\": \"B\" }], \"message\": \"...\" }",
+  "version": 1,
+  "services": [
+    {
+      "id": "creative-atlas",
+      "title": "Creative Atlas",
+      "kind": "ownspire",
+      "summary": "个人创意参考库。SQLite + media/ 同在数据卷 —— 备份必须成对带图。",
+      "repo": "/Users/token/pre-research/creative-atlas",
+      "baseUrl": "http://127.0.0.1:5601",
+      "tags": ["采集", "atlas"],
+      "endpoints": [
+        { "label": "本机（NUC 容器）", "url": "http://127.0.0.1:5601" },
+        { "label": "本机开发（next dev）", "url": "http://127.0.0.1:5600" }
+      ],
+      "entities": [
+        {
+          "id": "primary",
+          "port": 5601,
+          "source": "ownspire-infra/services/atlas",
+          "dataDir": "/srv/ownspire/data/atlas",
+          "capabilities": ["healthz", "sqlite", "media"],
+          "notes": "容器端口 5600，宿主 127.0.0.1:5601。备份产出 local-*.db + media-*.tar 一对。"
+        }
+      ],
+      "probes": [
+        {
+          "type": "http",
+          "url": "http://127.0.0.1:5601/healthz",
+          "expectJson": { "ok": true },
+          "versionField": "version",
+          "timeoutMs": 5000
+        },
+        { "type": "docker", "container": "ownspire-atlas-1" }
+      ],
+      "metrics": [
+        {
+          "id": "db-size",
+          "title": "数据库与媒体体积",
+          "script": "db-size.mjs",
+          "args": ["/srv/ownspire/data/atlas"],
+          "metricPrefix": "atlas"
+        }
+      ],
+      "actions": [
+        {
+          "id": "tail-log",
+          "title": "看最近日志",
+          "description": "读容器日志最后 80 行，不改变任何东西。",
+          "script": "tail-log.mjs",
+          "args": ["ownspire-atlas-1", "80"],
+          "readonly": true
+        },
+        {
+          "id": "backup",
+          "title": "备份（db + media）",
+          "description": "在 NUC 上执行 ownspire-infra 的 atlas backup，产出成对的 db 与媒体包。",
+          "script": "ownspire.mjs",
+          "args": ["atlas", "backup"],
+          "confirmPhrase": "backup-atlas"
+        }
+      ]
+    },
+    {
+      "id": "navi",
+      "title": "Navi",
+      "kind": "ownspire",
+      "summary": "待办与执行中心。整个数据集都在 SQLite 里，所以 VACUUM INTO 一个 .db 就是完整备份。",
+      "repo": "/Users/token/pre-research/navi",
+      "baseUrl": "http://127.0.0.1:5501",
+      "tags": ["待办", "atlas"],
+      "endpoints": [
+        { "label": "本机（NUC 容器）", "url": "http://127.0.0.1:5501" },
+        { "label": "本机开发（next dev）", "url": "http://127.0.0.1:5500" }
+      ],
+      "entities": [
+        {
+          "id": "primary",
+          "port": 5501,
+          "source": "ownspire-infra/services/navi",
+          "dataDir": "/srv/ownspire/data/navi",
+          "capabilities": ["healthz", "sqlite"],
+          "notes": "容器端口 5500，宿主 127.0.0.1:5501。有 drill（在临时库上验证恢复流程）。"
+        }
+      ],
+      "probes": [
+        {
+          "type": "http",
+          "url": "http://127.0.0.1:5501/healthz",
+          "expectJson": { "ok": true },
+          "versionField": "version",
+          "timeoutMs": 5000
+        },
+        { "type": "docker", "container": "ownspire-navi-1" }
+      ],
+      "metrics": [
+        { "id": "db-size", "title": "数据库体积", "script": "db-size.mjs", "args": ["/srv/ownspire/data/navi"], "metricPrefix": "navi" }
+      ],
+      "actions": [
+        { "id": "tail-log", "title": "看最近日志", "script": "tail-log.mjs", "args": ["ownspire-navi-1", "80"], "readonly": true },
+        {
+          "id": "backup",
+          "title": "备份",
+          "description": "在 NUC 上执行 ownspire-infra 的 navi backup。",
+          "script": "ownspire.mjs",
+          "args": ["navi", "backup"],
+          "confirmPhrase": "backup-navi"
+        },
+        {
+          "id": "drill",
+          "title": "恢复演练",
+          "description": "在临时库上验证恢复流程；不动生产数据。",
+          "script": "ownspire.mjs",
+          "args": ["navi", "drill"],
+          "readonly": true
+        }
+      ]
+    },
+    {
+      "id": "shadow-atlas",
+      "title": "Shadow Atlas",
+      "kind": "ownspire",
+      "summary": "第二个 atlas 采集库。本地开发端口 5700（与 navi/atlas 不同）。",
+      "repo": "/Users/token/pre-research/shadow-atlas",
+      "baseUrl": "http://127.0.0.1:5700",
+      "tags": ["采集", "atlas"],
+      "endpoints": [{ "label": "本机开发（next dev）", "url": "http://127.0.0.1:5700" }],
+      "entities": [
+        {
+          "id": "local",
+          "port": 5700,
+          "source": "本机 pm2 / next dev",
+          "dataDir": "~/.local/share/shadow-atlas",
+          "capabilities": ["healthz", "sqlite", "media"],
+          "notes": "尚无 compose 定义，未纳入 ownspire-infra。容器化之后把 docker 探针加上。"
+        }
+      ],
+      "probes": [
+        {
+          "type": "http",
+          "url": "http://127.0.0.1:5700/healthz",
+          "expectJson": { "ok": true },
+          "versionField": "version",
+          "timeoutMs": 5000
+        }
+      ],
+      "metrics": [],
+      "actions": []
+    },
+    {
+      "id": "raven",
+      "title": "Raven（本服务）",
+      "kind": "external",
+      "summary": "自监控：自己的 /healthz 与工作目录用量。自己挂了就没人报警，所以让它也出现在同一张表里。",
+      "baseUrl": "http://127.0.0.1:5801",
+      "tags": ["基础设施"],
+      "endpoints": [{ "label": "本机（NUC 容器）", "url": "http://127.0.0.1:5801" }],
+      "entities": [{ "id": "primary", "port": 5801, "source": "ownspire-infra/services/raven", "dataDir": "/srv/ownspire/data/raven" }],
+      "probes": [
+        {
+          "type": "http",
+          "url": "http://127.0.0.1:5801/healthz",
+          "expectJson": { "ok": true },
+          "versionField": "version",
+          "timeoutMs": 5000
+        }
+      ],
+      "metrics": [],
+      "actions": []
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# 依赖与构建产物
+node_modules/
+# ⚠️ 写成 `.next`（不带斜杠）而不是 `.next/`：**本机 .next 是指向 $TMPDIR 的符号链接**
+#    （turbopack 要求它这样，见 AGENTS.md），带斜杠的规则只匹配真目录，符号链接会被漏进来。
+.next
+next-env.d.ts
+*.tsbuildinfo
+
+# 真实配置与密钥 —— 绝不提交
+.env
+.env.local
+config/raven.config.json
+config/raven.config.local.json
+config/services.local.json
+
+# 运行期数据（默认 dataDir 之外也可能被指到这里）
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 脚本运行时的一次性目录
+tmp/
+.DS_Store

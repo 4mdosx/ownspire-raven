@@ -1,0 +1,20 @@
+{
+  "//": "容器镜像里作为构建期占位符的配置。真正的配置由 compose 把 /srv/ownspire/data/raven/raven.config.json 挂进 /data/raven/raven.config.json。",
+  "//rootPath": "容器里受管根是 /data/raven。⚠️ 不能写成 /data 或 `/`：配置加载会拒绝**文件系统根那几层**（/、/Users、/home、/data 这类只有一段的路径），因为那等于把整台机器交给文件管理器。数据卷仍挂在 /data，rootPath 指它下面的一个专用目录。",
+  "rootPath": "/data/raven",
+  "workspace": {
+    "name": "workspace",
+    "quotaBytes": null,
+    "allowScriptExecution": true,
+    "scriptsDir": "scripts"
+  },
+  "auth": {
+    "username": "admin",
+    "password": "placeholder-only-for-build"
+  },
+  "services": {
+    "registryFile": "services.json",
+    "collect": true,
+    "defs": []
+  }
+}

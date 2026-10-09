@@ -1,0 +1,45 @@
+{
+  "name": "ownspire-raven",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "dev": "node scripts/prepare-next.mjs && next dev -p 5800",
+    "dev:local": "node scripts/dev-local.mjs",
+    "build": "node scripts/prepare-next.mjs && next build",
+    "start": "next start -p 5800",
+    "init": "node --conditions react-server --import tsx scripts/init.ts",
+    "verify": "node --conditions react-server --import tsx scripts/verify-raven.ts",
+    "verify:config": "node --conditions react-server --import tsx scripts/verify-config.ts",
+    "verify:storage": "node --conditions react-server --import tsx scripts/verify-storage.ts",
+    "verify:dashboard": "node --conditions react-server --import tsx scripts/verify-dashboard.ts",
+    "typecheck": "tsc --noEmit --incremental false",
+    "hash-password": "node scripts/hash-password.mjs",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ownspire-raven",
+    "pm2:restart": "pm2 restart ownspire-raven"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.5",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.542.0",
+    "next": "16.3.8",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.0.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.7",
+    "@types/node": "^24.13.6",
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5",
+    "tailwindcss": "^4.1.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

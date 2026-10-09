@@ -1,0 +1,30 @@
+{
+  "host": "192.168.8.1",
+  "user": "root",
+  "nucAddr": "",
+  "services": [
+    {
+      "instance": "primary",
+      "service": "svc:navi",
+      "nucPort": 5501,
+      "routerPort": 5501,
+      "httpsPort": 443
+    },
+    {
+      "instance": "primary",
+      "service": "svc:atlas",
+      "nucPort": 5601,
+      "routerPort": 5601,
+      "httpsPort": 8443,
+      "containerPort": 5600
+    },
+    {
+      "instance": "primary",
+      "service": "svc:raven",
+      "nucPort": 5801,
+      "routerPort": 5801,
+      "httpsPort": 9443,
+      "containerPort": 5800
+    }
+  ]
+}
