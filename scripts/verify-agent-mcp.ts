@@ -37,8 +37,8 @@ const authHeaders = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'applica
 
 // handler 在 main() 里动态 import（env 之后）。模块级 let:post() 助手要引用它们。
 let POST: (request: Request) => Promise<Response>
-let GET: () => Promise<Response>
-let DELETE: () => Promise<Response>
+let GET: (request: Request) => Promise<Response>
+let DELETE: (request: Request) => Promise<Response>
 
 let assertions = 0
 let failures = 0

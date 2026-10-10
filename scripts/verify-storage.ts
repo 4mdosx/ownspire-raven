@@ -155,12 +155,16 @@ function processAlive(pid: number): boolean {
 // 临时配置
 // ---------------------------------------------------------------------------
 
-function configBody(root: string, allowScriptExecution = true): Record<string, unknown> {
+function configBody(
+  root: string,
+  allowScriptExecution = true,
+  quotaBytes: number | null = QUOTA_BYTES
+): Record<string, unknown> {
   return {
     rootPath: root,
     workspace: {
       name: 'workspace',
-      quotaBytes: QUOTA_BYTES,
+      quotaBytes,
       allowScriptExecution,
       scriptsDir: 'scripts',
     },
@@ -181,8 +185,17 @@ function configBody(root: string, allowScriptExecution = true): Record<string, u
 }
 
 /** 重写配置并强制改 mtime：getConfig() 是按 (file, mtimeMs) 缓存的。 */
-function writeConfig(root: string, allowScriptExecution = true, bump = 1000): void {
-  fs.writeFileSync(configFile, JSON.stringify(configBody(root, allowScriptExecution), null, 2), 'utf8')
+function writeConfig(
+  root: string,
+  allowScriptExecution = true,
+  bump = 1000,
+  quotaBytes: number | null = QUOTA_BYTES
+): void {
+  fs.writeFileSync(
+    configFile,
+    JSON.stringify(configBody(root, allowScriptExecution, quotaBytes), null, 2),
+    'utf8'
+  )
   const future = new Date(Date.now() + bump)
   fs.utimesSync(configFile, future, future)
 }
@@ -585,16 +598,25 @@ async function runChecks(checker: Checker, root: string): Promise<void> {
         `MAX_ATTACHMENT_BYTES=${clipboardService.MAX_ATTACHMENT_BYTES}`
       )
       const before = fs.readdirSync(clipboardRoot).length
-      await expectFailure(
-        'attachments_too_large',
-        () =>
-          clipboardService.createWithAttachments({
-            text: '',
-            attachments: [{ name: 'huge.bin', stream: repeatingStream(33 * 1024 * 1024) }],
-          }),
-        413
-      )
-      assert(fs.readdirSync(clipboardRoot).length === before, '超限的粘贴不该留下附件目录')
+      // ⚠️ 单条上限与受管根配额是**两个**约束，而本段的配额只有 64KiB：
+      // 不放开的话 32MiB 的写入会在第一块就撞 `quota_exceeded`（磁盘确实不够，
+      // 那也是对的），这条断言就永远验不到它想验的东西。配额语义由本段另外
+      // 几条断言覆盖，这里只验「产品上限自己会拦住」。
+      writeConfig(root, true, 2000, null)
+      try {
+        await expectFailure(
+          'attachments_too_large',
+          () =>
+            clipboardService.createWithAttachments({
+              text: '',
+              attachments: [{ name: 'huge.bin', stream: repeatingStream(33 * 1024 * 1024) }],
+            }),
+          413
+        )
+        assert(fs.readdirSync(clipboardRoot).length === before, '超限的粘贴不该留下附件目录')
+      } finally {
+        writeConfig(root, true, 3000)
+      }
     })
 
     await checker.check('剪切板：超过 maxItems 从队尾淘汰，并删掉被淘汰那条的附件目录', async () => {

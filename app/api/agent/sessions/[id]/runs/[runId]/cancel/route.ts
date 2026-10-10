@@ -1,5 +1,6 @@
 import { agentFetch } from '@/backstage/services/agent.service'
 import { requireSessionFrom } from '@/backstage/services/auth.service'
+import type { NextResponse } from 'next/server'
 import { handle, ok } from '@/backstage/lib/http'
 
 /**
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string; runId: string }> }
-): Promise<ReturnType<typeof handle>> {
+): Promise<NextResponse> {
   return handle(async () => {
     await requireSessionFrom(request)
     const { id, runId } = await context.params

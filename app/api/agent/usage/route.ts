@@ -1,5 +1,6 @@
 import { agentFetch } from '@/backstage/services/agent.service'
 import { requireSessionFrom } from '@/backstage/services/auth.service'
+import type { NextResponse } from 'next/server'
 import { handle, ok } from '@/backstage/lib/http'
 
 /**
@@ -11,7 +12,7 @@ import { handle, ok } from '@/backstage/lib/http'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request): Promise<ReturnType<typeof handle>> {
+export async function GET(request: Request): Promise<NextResponse> {
   return handle(async () => {
     await requireSessionFrom(request)
     return ok(await agentFetch<Record<string, unknown>>('/api/usage'))

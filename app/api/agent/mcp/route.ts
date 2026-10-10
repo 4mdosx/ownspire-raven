@@ -194,16 +194,22 @@ export async function POST(request: Request): Promise<Response> {
   )
 }
 
-/** 不提供 server→client 推送：405 是规范对无推送服务器的明确回答。 */
-export async function GET(): Promise<Response> {
+/**
+ * 不提供 server→client 推送：405 是规范对无推送服务器的明确回答。
+ *
+ * 参数声明出来但不读 —— Next 的 handler 签名本来就是 `(request, context)`，
+ * 写成零参会让人以为「这个 handler 收不到 request」，而自检脚本按真实形态
+ * 直接 `GET(new Request(...))` 调用时又会类型报错。
+ */
+export async function GET(_request: Request): Promise<Response> {
   return new Response(null, {
     status: 405,
     headers: { Allow: 'POST, DELETE' },
   })
 }
 
-/** 客户端会话关闭。无状态实现没有东西可清 —— 按规范回 204。 */
-export async function DELETE(): Promise<Response> {
+/** 客户端会话关闭。无状态实现没有东西可清 —— 按规范回 204。参数同上，声明不读。 */
+export async function DELETE(_request: Request): Promise<Response> {
   return new Response(null, { status: 204 })
 }
 
