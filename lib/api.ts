@@ -23,13 +23,31 @@ export type ApiEnvelope<T> = { ok: boolean; code?: string; error?: string } & Pa
 export class ApiClientError extends Error {
   readonly code: string
   readonly status: number
+  /**
+   * 服务端在失败信封里带的机读附加数据（见 `backstage/lib/http.ts` 的 `ApiError.details`）。
+   * 登录用它拿字段级错误 `{ pin: ['PIN 不正确'] }`，好把提示贴在对应输入框旁边。
+   */
+  readonly details?: Record<string, unknown>
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, details?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiClientError'
     this.code = code
     this.status = status
+    this.details = details
   }
+}
+
+/** 从失败信封里取出字段级错误，形如 `{ pin: ['PIN 不正确'] }`。 */
+export function fieldErrors(error: unknown): Record<string, string[]> {
+  if (!(error instanceof ApiClientError)) return {}
+  const raw = error.details?.['errors']
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string[]> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(value)) out[key] = value.filter((item): item is string => typeof item === 'string')
+  }
+  return out
 }
 
 /** 请求被主动取消（AbortController / 组件卸载）。界面应当**静默忽略**这类失败。 */
@@ -70,7 +88,7 @@ export function apiUrl(path: string, params: Record<string, QueryValue> = {}): s
 
 /** `{ok:false}` 时按信封里的字段构造错误；缺字段时按 HTTP 状态兜一句人话。 */
 function errorFromEnvelope(
-  envelope: { code?: unknown; error?: unknown },
+  envelope: { code?: unknown; error?: unknown; details?: unknown },
   status: number,
   context: string
 ): ApiClientError {
@@ -79,7 +97,11 @@ function errorFromEnvelope(
     typeof envelope.error === 'string' && envelope.error !== ''
       ? envelope.error
       : `请求失败（HTTP ${status}，code=${code}），服务端没有给出说明。${context}`
-  return new ApiClientError(code, message, status)
+  const details =
+    envelope.details !== null && typeof envelope.details === 'object' && !Array.isArray(envelope.details)
+      ? (envelope.details as Record<string, unknown>)
+      : undefined
+  return new ApiClientError(code, message, status, details)
 }
 
 /** 响应体解析结果。用可辨识联合，避免在 `never` 上取属性。 */
@@ -196,6 +218,14 @@ export function apiPost<T>(path: string, body?: unknown, options: RequestOptions
 
 export function apiPatch<T>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
   return request<T>('PATCH', path, body ?? {}, options)
+}
+
+export function apiPut<T>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
+  // ⚠️ 与 apiGet/apiPost/apiPatch 保持同一形态：`request(method, path, body, options)`。
+  // 原写法 `request(path, { ...options, method: 'PUT' })` 把 options 塞到了第二个
+  // 参数（body 的位置），而且自己 JSON.stringify 了一遍 body ——
+  // 那样会绕过 request 里统一设置 Content-Type 与 undefined body 的判断。
+  return request<T>('PUT', path, body ?? {}, options)
 }
 
 export function apiDelete<T>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
@@ -391,6 +421,22 @@ export async function apiStream(path: string, options: StreamOptions): Promise<v
       body: JSON.stringify(body ?? {}),
     },
     rest
+  )
+}
+
+/**
+ * GET 版的事件流（agent 契约 §六「断线重连」）：回放 + 续流是只读的，
+ * 走 GET 才对。`?after=seq` 由调用方自己拼进 path。
+ */
+export async function apiStreamGet(path: string, options: Omit<StreamOptions, 'body'>): Promise<void> {
+  return runStream(
+    path,
+    {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    },
+    options
   )
 }
 

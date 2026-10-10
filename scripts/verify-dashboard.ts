@@ -37,7 +37,16 @@ export type VerifyChecker = {
 }
 
 const REGISTRATION_TOKEN = 'dash-registration-token-0123456789'
-const AUTH_PASSWORD = 'dash-password-must-not-leak'
+
+/**
+ * 泄漏探针用的 PIN。
+ *
+ * ⚠️ 它**不是**配置项了 —— 凭据改由首次登录在数据库里设置。所以它的用途从
+ * 「断言配置里的密码没泄漏」变成了「断言这个值不会出现在任何响应里」。
+ * 换句话说：它是「假如这个值出现在了输出里那就一定是我们泄漏了」的哨兵，
+ * 而不再是被检视的配置内容。
+ */
+const AUTH_PIN = '7391'
 
 export async function runDashboardChecks(checker: VerifyChecker, options: { temp: string }): Promise<void> {
   const temp = path.resolve(options.temp)
@@ -57,7 +66,7 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
     rootPath: root,
     workspace: { name: 'workspace', quotaBytes: null, allowScriptExecution: true, scriptsDir: 'scripts' },
     clipboard: { maxItems: 50, maxTextBytes: 65_536 },
-    auth: { username: 'verify', password: AUTH_PASSWORD, sessionHours: 1 },
+    auth: { sessionHours: 1 },
     scripts: {
       env: {},
       execution: { timeoutMs: 2000, maxOutputBytes: 65_536, maxConcurrent: 4 },
@@ -582,7 +591,9 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
 
       const text = JSON.stringify(view)
       if (text.includes(REGISTRATION_TOKEN)) throw new Error('dashboard 泄漏了注册令牌')
-      if (text.includes(AUTH_PASSWORD)) throw new Error('dashboard 泄漏了密码')
+      if (text.includes(AUTH_PIN)) throw new Error('dashboard 泄漏了 PIN')
+      // 散列前缀也不能出现：出现它说明有人把 PIN 散列塞进了响应。
+      if (text.includes('scrypt$')) throw new Error('dashboard 泄漏了凭据散列')
 
       const cached = view.services.find((service) => service.id === 'cache-svc')
       if (cached === undefined) throw new Error('dashboard 里没有 cache-svc')
@@ -652,7 +663,9 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
       if (payload.totals?.total !== payload.services.length) throw new Error('totals.total 与 services 不一致')
       if (payload.config?.sampleIntervalSeconds !== 5) throw new Error('config 没带上采样间隔')
       const text = JSON.stringify(payload)
-      if (text.includes(REGISTRATION_TOKEN) || text.includes(AUTH_PASSWORD)) throw new Error('路由返回体里出现了秘密')
+      if (text.includes(REGISTRATION_TOKEN) || text.includes(AUTH_PIN) || text.includes('scrypt$')) {
+        throw new Error('路由返回体里出现了秘密')
+      }
     })
 
     await checker.check('路由：GET /api/services/[id] await 了 params，未知 id → 404 信封', async () => {

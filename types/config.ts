@@ -8,7 +8,7 @@
  *    都落在这个边界里，文件管理器只看得到 `<rootPath>/<workspace.name>` 那一棵。
  * 2. `workspace.quotaBytes` 是目录总大小上限，null 表示不限。
  * 3. `clipboard.maxItems` 是队列长度，超了从队尾淘汰。
- * 4. 账号密码直接写在配置里（单账号、全权限）。
+ * 4. 登录只靠 PIN，首次访问时设置；配置里只留会话时长与限流阈值，不含凭据。
  * 5. 脚本运行前注入环境变量表，脚本不关心真实目录结构。
  * 6. `services` 是 ownspire 服务注册表与健康检查/指标采集的机制。
  */
@@ -44,14 +44,21 @@ export type ExecutionConfig = {
 }
 
 export type AuthConfig = {
-  username: string
-  /** 明文密码。与 passwordHash 二选一。 */
-  password?: string
-  /** `scrypt$N$r$p$salt$hash` 形式的密码散列。与 password 二选一，优先。 */
-  passwordHash?: string
-  /** 会话有效期（小时）。 */
+  /**
+   * 会话有效期（小时）。
+   *
+   * ⚠️ 注意这里**只有策略，没有凭据**。PIN 是运行期第一次登录时设置的，
+   * 存在 SQLite 的 settings 表里（见 `backstage/services/pin.service.ts`），
+   * 不在配置文件里 —— 配置文件必须在第一次登录之前就存在，
+   * 而「首次设置」这件事本身没法用配置文件表达。
+   */
   sessionHours: number
-  /** 登录失败限流：窗口秒数与窗口内最大失败次数。 */
+  /**
+   * 登录失败限流：窗口秒数与窗口内最大失败次数。
+   *
+   * ⚠️ 4 位 PIN 只有 10000 种可能，所以这个开关**不是可选项，是必需品** ——
+   * 没有它，一个循环脚本就能把 PIN 枚举完。
+   */
   loginRateLimit: { windowSeconds: number; maxFailures: number }
 }
 
@@ -250,5 +257,4 @@ export type PublicConfig = {
     sampleIntervalSeconds: number
     count: number
   }
-  username: string
 }

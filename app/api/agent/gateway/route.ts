@@ -1,18 +1,15 @@
-import { cancelExecution, runExecution } from '@/backstage/services/execution.service'
-import { findTool, listToolsData } from '@/backstage/tools'
-import '@/backstage/tools'
 import {
-  clampTimeout,
+  dispatchCancelExecution,
+  dispatchExecuteTool,
+  dispatchListTools,
+} from '@/backstage/services/tool-gateway'
+import {
   RAVEN_TOOL_PROTOCOL_VERSION,
-  resolveWorkspaceId,
   toToolError,
   ToolProtocolError,
   TOOL_ERROR_CODES,
-  type CancelExecutionData,
-  type ListToolsData,
   type ToolProtocolRequest,
   type ToolProtocolResponse,
-  type ToolResult,
 } from '@/backstage/lib/tool-protocol'
 
 /**
@@ -133,67 +130,17 @@ function asOptionalString(value: unknown, field: string): string | undefined {
 }
 
 /**
- * workspace 解析。**传来的不是已知 workspace 就报错，不静默回退到默认。**
- *
- * 静默回退会让「我以为在 A 里写，实际写进了 B」变成一类查不出来的事故 ——
- * 而现在只有一个 workspace，所以这里做的是校验不是查找。
+ * 分发实现在 `backstage/services/tool-gateway.ts`（gateway 与 MCP 端点共享）。
+ * 这一层只剩：鉴权 → 形状校验 → 信封组装。
  */
-function workspaceOf(request: { workspaceId?: string }): string {
-  const resolved = resolveWorkspaceId(request.workspaceId)
-  if (resolved === null) {
-    throw new ToolProtocolError(
-      'workspace_unknown',
-      `没有这个 workspace：${String(request.workspaceId)}（当前只有一个受管工作区）`
-    )
-  }
-  return resolved
-}
-
 async function dispatch(request: ToolProtocolRequest): Promise<Response> {
   switch (request.op) {
-    case 'listTools': {
-      const data: ListToolsData = listToolsData(workspaceOf(request))
-      return ok(data)
-    }
-
-    case 'executeTool': {
-      const workspaceId = workspaceOf(request)
-      const executor = findTool(request.toolName)
-      if (!executor) {
-        throw new ToolProtocolError('unknown_tool', `raven 没有这个工具：${request.toolName}`)
-      }
-      if (executor.enabled === false) {
-        throw new ToolProtocolError(
-          'tool_disabled',
-          `${request.toolName} 已注册但未开放。它出现在 listTools 的 disabled 列表里。`
-        )
-      }
-      const timeoutMs = clampTimeout(
-        request.timeoutMs,
-        executor.definition.timeoutMs ?? 0
-      )
-      const result: ToolResult = await runExecution({
-        ...(request.executionId !== undefined ? { executionId: request.executionId } : {}),
-        toolName: request.toolName,
-        workspaceId,
-        timeoutMs,
-        work: ({ executionId, signal }) =>
-          executor.execute(request.arguments, { workspaceId, executionId, signal }),
-      })
-      return ok(result)
-    }
-
-    case 'cancelExecution': {
-      const outcome = cancelExecution(request.executionId)
-      if (outcome === null) {
-        throw new ToolProtocolError(
-          'execution_not_found',
-          `raven 不认识这个 executionId：${request.executionId}（可能已结束并被清理，或从未开始）`
-        )
-      }
-      const data: CancelExecutionData = outcome
-      return ok(data)
-    }
+    case 'listTools':
+      return ok(await dispatchListTools(request))
+    case 'executeTool':
+      return ok(await dispatchExecuteTool(request))
+    case 'cancelExecution':
+      return ok(await dispatchCancelExecution(request))
   }
 }
 
@@ -232,7 +179,7 @@ function isKnownProtocolCode(error: unknown): boolean {
 export async function GET(request: Request): Promise<Response> {
   try {
     requireGatewayToken(request)
-    return ok(listToolsData(workspaceOf({})))
+    return ok(await dispatchListTools({ op: 'listTools' }))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes('没有配置 AGENT_RUNTIME_TOKEN')) return fail(error, 503)

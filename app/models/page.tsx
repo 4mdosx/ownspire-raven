@@ -1,4 +1,5 @@
 import { publicConfig } from '@/backstage/lib/config'
+import { AgentBudget } from '@/components/raven/agent-budget'
 import { ModelConfig } from '@/components/raven/model-config'
 import { RavenShell } from '@/components/raven/shell'
 
@@ -15,8 +16,9 @@ export default function ModelsPage() {
   const config = publicConfig()
   const agentConfigured = (process.env.AGENT_RUNTIME_TOKEN ?? '').trim() !== ''
   return (
-    <RavenShell version={config.version} username={config.username}>
+    <RavenShell version={config.version}>
       <ModelConfig agentConfigured={agentConfigured} />
+      <AgentBudget />
     </RavenShell>
   )
 }

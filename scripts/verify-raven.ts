@@ -147,8 +147,15 @@ async function main(): Promise<void> {
 
   await checker.check('proxy.ts 放行的公开路径与文档一致', async () => {
     const proxy = fs.readFileSync(path.join(repo, 'proxy.ts'), 'utf8')
-    for (const required of ["'/login'", "'/healthz'", "'/api/auth/login'", "'/api/ingest'"]) {
+    // ⚠️ `/api/auth/setup` 必须在列表里：首次部署没有 PIN 也没有会话，
+    // 不放行它就永远走不到设置那一步，整个实例进不去。
+    // 它安全是因为 service 层用 isPinConfigured() 把住了（已设过就拒绝）。
+    for (const required of ["'/login'", "'/healthz'", "'/api/auth/login'", "'/api/auth/setup'", "'/api/ingest'"]) {
       if (!proxy.includes(required)) throw new Error(`proxy.ts 缺少公开路径 ${required}`)
+    }
+    // 反向断言：改 PIN 必须继续要登录态。
+    if (proxy.includes("'/api/auth/pin'")) {
+      throw new Error('/api/auth/pin 绝不能公开 —— 那会让任何人都能改掉 PIN')
     }
   })
 

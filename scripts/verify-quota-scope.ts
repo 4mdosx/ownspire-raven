@@ -75,7 +75,7 @@ async function main(): Promise<void> {
         rootPath: root,
         workspace: { name: 'workspace', quotaBytes: QUOTA, allowScriptExecution: true, scriptsDir: 'scripts' },
         clipboard: { maxItems: 10, maxTextBytes: 1024 },
-        auth: { username: 'admin', password: 'x' },
+        auth: {},
         scripts: { execution: { timeoutMs: 5000, maxOutputBytes: 4096, maxConcurrent: 1 }, tempDir: 'tmp' },
         services: { collect: false, defs: [] },
       },
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
         JSON.stringify({
           rootPath: path.join(temp, 'root-unlimited'),
           workspace: { name: 'workspace', quotaBytes: null },
-          auth: { username: 'admin', password: 'x' },
+          auth: {},
         }),
         'utf8'
       )

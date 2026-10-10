@@ -1,6 +1,7 @@
 import type { NextResponse } from 'next/server'
 import { ApiError, handle, ok } from '@/backstage/lib/http'
 import { agentFetch } from '@/backstage/services/agent.service'
+import { requireSessionFrom } from '@/backstage/services/auth.service'
 
 /**
  * 配置目录的转发（agent 契约 §三「配置目录」）。
@@ -31,6 +32,8 @@ function agentPath(segments: string[] | undefined): string {
 
 async function proxy(request: Request, context: Context, method: 'GET' | 'PUT' | 'DELETE'): Promise<NextResponse> {
   return handle(async () => {
+    // 全权代理同理：先登录态,再转发（预算接口在这里一并覆盖 —— catch-all 天然带上）。
+    await requireSessionFrom(request)
     const { path } = await context.params
     const incoming = new URL(request.url)
     // ⚠️ 解析失败给 `{}` 而不是让异常冒出去：agent 侧会对空 body 说

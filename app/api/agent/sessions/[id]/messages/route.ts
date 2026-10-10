@@ -1,5 +1,6 @@
 import { ApiError, fail, readJson } from '@/backstage/lib/http'
 import { forwardAgentStream } from '@/backstage/services/agent.service'
+import { requireSessionFrom } from '@/backstage/services/auth.service'
 
 /**
  * 发消息（**唯一的流式接口**）。
@@ -27,6 +28,8 @@ export async function POST(
   const { id } = await context.params
 
   try {
+    // ⚠️ 必须在开流之前 —— 流开始后状态码改不了（agent 契约 §四 规则一）。
+    await requireSessionFrom(request)
     const body = await readJson(request)
     const upstream = await forwardAgentStream(id, body)
 

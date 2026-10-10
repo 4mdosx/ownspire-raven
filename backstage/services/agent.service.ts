@@ -21,7 +21,8 @@ export function agentBaseUrl(): string {
   return raw.replace(/\/+$/, '')
 }
 
-function agentToken(): string {
+/** Bearer token。**server-only 模块内使用** —— 与 agentBaseUrl 一样不出服务端。 */
+export function agentToken(): string {
   const token = process.env.AGENT_RUNTIME_TOKEN?.trim()
   if (!token) {
     throw new ApiError(
@@ -137,7 +138,17 @@ export function getAgentSession(sessionId: string, signal?: AbortSignal): Promis
 }
 
 export function createAgentSession(
-  body: { title?: string; instructions?: string; tools?: string[] },
+  body: {
+    title?: string
+    instructions?: string
+    tools?: string[]
+    /** 2026-10-09 契约加法:引擎与固定端点/模型、双审批开关。原样透传。 */
+    engine?: 'little-one' | 'claude'
+    endpointId?: string
+    modelId?: string
+    sandboxApproval?: boolean
+    businessApproval?: boolean
+  },
   signal?: AbortSignal
 ): Promise<{ sessionId: string; title: string; createdAt: number; tools: string[] }> {
   return agentFetch('/api/sessions', { method: 'POST', body, ...(signal ? { signal } : {}) })

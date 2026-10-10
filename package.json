@@ -16,13 +16,18 @@
     "verify:storage": "node --conditions react-server --import tsx scripts/verify-storage.ts",
     "verify:dashboard": "node --conditions react-server --import tsx scripts/verify-dashboard.ts",
     "typecheck": "tsc --noEmit --incremental false",
-    "hash-password": "node scripts/hash-password.mjs",
     "pm2:start": "npm run build && pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop ownspire-raven",
     "pm2:restart": "pm2 restart ownspire-raven",
-    "verify:bff": "node --conditions react-server --import tsx scripts/verify-agent-config-bff.ts"
+    "verify:bff": "node --conditions react-server --import tsx scripts/verify-agent-config-bff.ts",
+    "verify:agent-mcp": "node --conditions react-server --import tsx scripts/verify-agent-mcp.ts"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-toast": "^1.2.14",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.5",
     "jose": "^5.9.6",

@@ -14,9 +14,31 @@
  *
  * 需要 little-one 在 5900 上跑着。
  */
-import { DELETE, GET, POST, PUT } from '@/app/api/agent/config/[[...path]]/route'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+// ⚠️ **必须在 route 模块加载之前写好 env**（ESM 静态 import 会提升,所以
+// route 用 main 里的动态 import）。raven 的库与配置指向临时目录 ——
+// requireSessionFrom 现在要读 raven 自己的 pin 表,不能碰真库。
+process.env.SESSION_SECRET = process.env.SESSION_SECRET ?? 'verify-bff-secret-16-chars!!'
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'raven-bff-verify-'))
+process.env.RAVEN_CONFIG = path.join(TMP, 'raven.config.json')
+fs.writeFileSync(
+  process.env.RAVEN_CONFIG,
+  JSON.stringify({
+    rootPath: path.join(TMP, 'root'),
+    workspace: { name: 'workspace', quotaBytes: null, allowScriptExecution: false, scriptsDir: 'scripts' },
+    clipboard: { maxItems: 100, maxTextBytes: 65536 },
+    auth: { sessionHours: 1, loginRateLimit: { windowSeconds: 60, maxFailures: 5 } },
+  })
+)
+process.env.RAVEN_DB_FILE = path.join(TMP, 'raven.db')
 
 const BASE = 'http://127.0.0.1:5900'
+
+/** 登录态 cookie。main 里签发（需要先在临时库里设一次 PIN）。 */
+let AUTH_COOKIE = ''
 
 let assertions = 0
 let failures = 0
@@ -60,8 +82,13 @@ async function call(
   const segments = relative === '' ? [] : relative.split('/')
   const search = options.query === undefined ? '' : `?${options.query}`
   const url = `${BASE}/api/agent/config${relative === '' ? '' : `/${relative}`}${search}`
+  // 登录态走 cookie 头 —— requireSessionFrom(request) 从这里解析（契约 §二：
+  // 浏览器只跟 raven 说话；验证脚本扮演的正是那个已登录的浏览器）。
+  const headers = new Headers(options.init?.headers)
+  if (AUTH_COOKIE !== '') headers.set('Cookie', AUTH_COOKIE)
+  const init: RequestInit = { ...options.init, headers }
   const res = await (fn as (request: Request, context: unknown) => Promise<Response>)(
-    new Request(url, options.init),
+    new Request(url, init),
     ctx(segments.length === 0 ? undefined : segments)
   )
   const text = await res.text()
@@ -76,6 +103,16 @@ async function call(
 
 async function main(): Promise<void> {
   console.log('\n[BFF · 配置目录转发]')
+
+  // ⚠️ route 模块在 env 就位之后才加载（见文件头）。
+  const { DELETE, GET, POST, PUT } = await import('../app/api/agent/config/[[...path]]/route')
+
+  // 临时库里设一次 PIN → 签发登录 cookie。BFF 现在每条路由都校验登录态
+  //（2026-10-09 审计裁定:全权代理不能挂在无鉴权端口上）,脚本扮演已登录浏览器。
+  const { savePin } = await import('../backstage/services/pin.service')
+  const { createSessionToken, SESSION_COOKIE } = await import('../backstage/services/auth.service')
+  await savePin('0000')
+  AUTH_COOKIE = `${SESSION_COOKIE}=${await createSessionToken()}`
 
   // ⚠️ **用一次性厂商，不要动 seed 里的deepseek。**
   // 早先这个脚本直接删 deepseek，于是它自我毁坏：第一次跑把端点删了，
@@ -99,6 +136,10 @@ async function main(): Promise<void> {
   )
   check('⚠️ 响应里搜不到 "apiKey" 键', !read.text.includes('"apiKey"'))
   check('脱敏字段确实在（apiKeySource / apiKeySet）', read.text.includes('apiKeySource'))
+  // ⚠️ keyEnvVar 已从契约里删掉（2026-10-09，key 只从库里来）。
+  // 这条断言守着 BFF **不做字段增补** —— 它只转发，不加工。
+  // 万一哪天有人在 envelope 里补了个 keyEnvVar，界面就会显示一个填了不生效的输入框。
+  check('响应里没有 keyEnvVar（BFF 不补字段，只转发）', !read.text.includes('keyEnvVar'))
 
   try {
     // ---- 建厂商 + 端点 + 模型（给删除准备「下级」）----
@@ -107,7 +148,6 @@ async function main(): Promise<void> {
         method: 'PUT',
         body: JSON.stringify({
           label: 'BFF 验证用',
-          keyEnvVar: 'BFF_VERIFY_KEY',
           defaultProtocol: 'openai-chat-completions',
           apiKey: 'sk-bff-verify-7777',
         }),
@@ -173,6 +213,7 @@ async function main(): Promise<void> {
   }
 
   console.log('')
+  fs.rmSync(TMP, { recursive: true, force: true })
   console.log(`${assertions - failures}/${assertions} 条断言`)
   if (failures > 0) process.exitCode = 1
 }

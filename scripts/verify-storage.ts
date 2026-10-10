@@ -165,7 +165,7 @@ function configBody(root: string, allowScriptExecution = true): Record<string, u
       scriptsDir: 'scripts',
     },
     clipboard: { maxItems: MAX_ITEMS, maxTextBytes: MAX_TEXT_BYTES },
-    auth: { username: 'verify', password: 'verify-password' },
+    auth: { sessionHours: 1 },
     scripts: {
       // 占位符展开是这里断言的一部分：`{workspace}` 必须变成真实路径。
       env: { VERIFY_GREETING: 'hi-{workspace}', VERIFY_ROOT: '{root}', VERIFY_UNKNOWN: '{nope}' },
