@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     console.log(`  ${label.padEnd(14)} ${dir}`)
   }
 
-  ensureSchema()
+  await ensureSchema()
   console.log(`数据库：${path.join(config.dataDir, 'raven.db')}`)
 
   const registryFile = config.services.registryFile

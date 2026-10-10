@@ -28,7 +28,7 @@ export async function GET(): Promise<NextResponse> {
         allowScriptExecution: config.workspace.allowScriptExecution,
         tempDir: config.scripts.tempDir,
       },
-      runs: listRuns(20),
+      runs: await listRuns(20),
     })
   })
 }

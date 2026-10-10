@@ -35,8 +35,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const params = await searchParams
 
   // PIN 存在 settings 表里，读它之前得确保结构在（首次部署时表还不存在）。
-  ensureSchema()
-  const configured = isPinConfigured()
+  await ensureSchema()
+  const configured = await isPinConfigured()
   const next = safeNext(params.next)
 
   // 已经解锁就别再给一次登录框。proxy 本该拦住，但直接访问 /login 时这里兜住。

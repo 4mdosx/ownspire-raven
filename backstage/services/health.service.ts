@@ -751,12 +751,12 @@ function reportFromRow(row: ServiceSnapshotRow): HealthReport {
  */
 const memorySnapshots = new Map<string, HealthReport>()
 
-function readCachedReport(serviceId: string): HealthReport | null {
+async function readCachedReport(serviceId: string): Promise<HealthReport | null> {
   const inMemory = memorySnapshots.get(serviceId)
   if (inMemory !== undefined) return inMemory
   let rows: ServiceSnapshotRow[]
   try {
-    rows = dbSnapshotAll()
+    rows = await dbSnapshotAll()
   } catch (error) {
     console.error('[raven] 读服务快照失败：', error)
     return null
@@ -767,15 +767,15 @@ function readCachedReport(serviceId: string): HealthReport | null {
   return memorySnapshots.get(serviceId) ?? null
 }
 
-function persist(report: HealthReport, historyLimit: number): void {
-  dbSampleInsert({
+async function persist(report: HealthReport, historyLimit: number): Promise<void> {
+  await dbSampleInsert({
     serviceId: report.serviceId,
     status: report.status,
     latencyMs: report.latencyMs,
     message: report.message,
     checkedAt: report.checkedAt,
   })
-  dbSnapshotPut({
+  await dbSnapshotPut({
     serviceId: report.serviceId,
     status: report.status,
     latencyMs: report.latencyMs,
@@ -789,7 +789,7 @@ function persist(report: HealthReport, historyLimit: number): void {
   })
   // 每次采样后修剪，而不是只在 collectAll 里修：dashboard 用 force 轮询时
   // 一样在写历史，只靠手动采集那条路径修剪的话表会一直长。
-  dbSamplePrune(historyLimit)
+  await dbSamplePrune(historyLimit)
 }
 
 /**
@@ -801,7 +801,7 @@ function persist(report: HealthReport, historyLimit: number): void {
 export async function checkService(snapshot: ServiceSnapshot, options: { force?: boolean } = {}): Promise<HealthReport> {
   const { config } = getConfig()
   const serviceId = snapshot.def.id
-  const cached = readCachedReport(serviceId)
+  const cached = await readCachedReport(serviceId)
 
   if (!config.services.collect) {
     return cached !== null
@@ -838,7 +838,7 @@ export async function checkService(snapshot: ServiceSnapshot, options: { force?:
   }
 
   try {
-    persist(report, config.services.historyLimit)
+    await persist(report, config.services.historyLimit)
   } catch (error) {
     // 写库失败不能把一次成功的采集变成 500：结果照常返回，历史少一条。
     console.error(`[raven] 服务 ${serviceId} 的采样落库失败：`, error)

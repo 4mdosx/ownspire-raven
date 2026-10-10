@@ -1,99 +1,134 @@
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+
 /**
- * SQLite 结构。
+ * SQLite 结构 —— **这是 raven 表结构的唯一真相**。
  *
- * 用 `node:sqlite`（Node 24 内置），和 creative-atlas 一样不引第三方驱动 ——
- * 但**不用 drizzle**：raven 的表都是窄表（剪切板、健康样本、脚本运行记录、
- * 服务快照），原生 SQL 比一层 ORM 更好读，也少一层构建期依赖。
+ * 以前这里是一份手写 `SCHEMA_SQL`（`CREATE TABLE ...` 字符串），service 里再写
+ * 一遍裸 SQL 查询，两处各写一遍结构。现在只有这一份：它是 drizzle-kit 生成迁移
+ * 的输入，也是查询层的类型来源（`typeof table.$inferSelect` 取代手写 Row 类型）。
  *
- * 迁移策略沿用 atlas 的纪律：`ensureSchema` 只创建**当前**结构；撞到已知的旧结构
- * 就抛错，不做自动搬运。
+ * 为什么用 drizzle 而不是继续裸 SQL：**结构演进要有历史**。手写 `CREATE TABLE IF
+ * NOT EXISTS` 只能建「当前这一版」，加一列就得再写一段 `ALTER TABLE`，跑没跑过
+ * 无法从库里读出来。迁移文件是能进版本库、能 review、能在新机器上重放的东西。
+ *
+ * ⚠️ **列名必须与 TypeScript 侧完全同名**（尤其 `attachBytes`）。早先是
+ * `attach_bytes`，而查询写的是 `attachBytes` —— SQLite 里那是两个不同的标识符，
+ * 每次插入都抛 "no column named attachBytes"，剪切板 100% 不可用，而类型检查
+ * 完全看不见。drizzle 之后这类漂移会在 typecheck 阶段就死掉。
  */
 
-export const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS clipboard_entries (
-  id            TEXT PRIMARY KEY,
-  text          TEXT NOT NULL,
-  bytes         INTEGER NOT NULL,
-  source        TEXT NOT NULL DEFAULT 'web',
-  attachments   TEXT NOT NULL DEFAULT '[]',
-  -- ⚠️ 列名是 camelCase 的 attachBytes，与 TypeScript 侧 ClipboardRow 完全同名。
-  -- 早先这里是 attach_bytes，而 dbClipboardInsert 写的是 attachBytes ——
-  -- SQLite 里那是两个不同的标识符，于是每一次插入都抛
-  -- "table clipboard_entries has no column named attachBytes"，剪切板 100% 不可用。
-  -- 教训：db 层是 SELECT *，列名一旦和类型定义不同名，
-  -- 类型检查完全看不见，只有真跑一次插入才会暴露。所以这里坚持同名。
-  attachBytes   INTEGER NOT NULL DEFAULT 0,
-  idemKey       TEXT,
-  createdAt     INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_clipboard_created ON clipboard_entries (createdAt DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_clipboard_idem ON clipboard_entries (idemKey) WHERE idemKey IS NOT NULL;
+/**
+ * 剪切板队列。
+ *
+ * 队序是 `createdAt DESC, id DESC`（id 是 ULID，字典序 = 时间序）。
+ * `idemKey` 上的是**部分唯一索引**（`WHERE idemKey IS NOT NULL`）——
+ * 没有 NULL 过滤的话，多条 `idemKey IS NULL` 的记录会互相冲突，第二条就插不进去了。
+ */
+export const clipboardEntries = sqliteTable(
+  'clipboard_entries',
+  {
+    id: text('id').primaryKey(),
+    text: text('text').notNull(),
+    bytes: integer('bytes').notNull(),
+    source: text('source').notNull().default('web'),
+    attachments: text('attachments').notNull().default('[]'),
+    // ⚠️ camelCase，与 ClipboardRow 同名。别改成 snake_case，理由见文件头。
+    attachBytes: integer('attachBytes').notNull().default(0),
+    idemKey: text('idemKey'),
+    createdAt: integer('createdAt').notNull(),
+  },
+  (table) => [
+    index('idx_clipboard_created').on(sql`${table.createdAt} DESC`),
+    uniqueIndex('idx_clipboard_idem').on(table.idemKey).where(sql`${table.idemKey} IS NOT NULL`),
+  ]
+)
 
-CREATE TABLE IF NOT EXISTS service_snapshots (
-  serviceId   TEXT PRIMARY KEY,
-  status      TEXT NOT NULL,
-  latencyMs   INTEGER,
-  message     TEXT NOT NULL DEFAULT '',
-  version     TEXT NOT NULL DEFAULT '',
-  source      TEXT NOT NULL DEFAULT 'collector',
-  details     TEXT NOT NULL DEFAULT '{}',
-  checkedAt   INTEGER NOT NULL,
-  okCount     INTEGER NOT NULL DEFAULT 0,
-  totalCount  INTEGER NOT NULL DEFAULT 0
-);
+/** 服务快照：每个服务一行，健康检查的最新结论。 */
+export const serviceSnapshots = sqliteTable('service_snapshots', {
+  serviceId: text('serviceId').primaryKey(),
+  status: text('status').notNull(),
+  latencyMs: integer('latencyMs'),
+  message: text('message').notNull().default(''),
+  version: text('version').notNull().default(''),
+  source: text('source').notNull().default('collector'),
+  details: text('details').notNull().default('{}'),
+  checkedAt: integer('checkedAt').notNull(),
+  okCount: integer('okCount').notNull().default(0),
+  totalCount: integer('totalCount').notNull().default(0),
+})
 
-CREATE TABLE IF NOT EXISTS service_samples (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  serviceId   TEXT NOT NULL,
-  status      TEXT NOT NULL,
-  latencyMs   INTEGER,
-  message     TEXT NOT NULL DEFAULT '',
-  checkedAt   INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_samples_service ON service_samples (serviceId, checkedAt DESC);
+/** 健康样本：每次检查一行，用来画曲线。 */
+export const serviceSamples = sqliteTable(
+  'service_samples',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    serviceId: text('serviceId').notNull(),
+    status: text('status').notNull(),
+    latencyMs: integer('latencyMs'),
+    message: text('message').notNull().default(''),
+    checkedAt: integer('checkedAt').notNull(),
+  },
+  (table) => [index('idx_samples_service').on(table.serviceId, sql`${table.checkedAt} DESC`)]
+)
 
-CREATE TABLE IF NOT EXISTS service_metrics (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  serviceId   TEXT NOT NULL,
-  metric      TEXT NOT NULL,
-  value       REAL NOT NULL,
-  unit        TEXT NOT NULL DEFAULT '',
-  at          INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_metrics_service ON service_metrics (serviceId, metric, at DESC);
+/** 指标时序。 */
+export const serviceMetrics = sqliteTable(
+  'service_metrics',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    serviceId: text('serviceId').notNull(),
+    metric: text('metric').notNull(),
+    value: real('value').notNull(),
+    unit: text('unit').notNull().default(''),
+    at: integer('at').notNull(),
+  },
+  (table) => [index('idx_metrics_service').on(table.serviceId, table.metric, sql`${table.at} DESC`)]
+)
 
-CREATE TABLE IF NOT EXISTS run_records (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  script      TEXT NOT NULL,
-  origin      TEXT NOT NULL DEFAULT 'workspace',
-  status      TEXT NOT NULL,
-  exitCode    INTEGER,
-  startedAt   INTEGER NOT NULL,
-  endedAt     INTEGER NOT NULL,
-  durationMs  INTEGER NOT NULL DEFAULT 0,
-  stdout      TEXT NOT NULL DEFAULT '',
-  stderr      TEXT NOT NULL DEFAULT '',
-  truncated   INTEGER NOT NULL DEFAULT 0,
-  signal      TEXT NOT NULL DEFAULT '',
-  triggeredBy TEXT NOT NULL DEFAULT 'ui',
-  metricCalls INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_runs_started ON run_records (startedAt DESC);
-CREATE INDEX IF NOT EXISTS idx_runs_script ON run_records (script, startedAt DESC);
+/** 脚本运行记录。 */
+export const runRecords = sqliteTable(
+  'run_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    script: text('script').notNull(),
+    origin: text('origin').notNull().default('workspace'),
+    status: text('status').notNull(),
+    exitCode: integer('exitCode'),
+    startedAt: integer('startedAt').notNull(),
+    endedAt: integer('endedAt').notNull(),
+    durationMs: integer('durationMs').notNull().default(0),
+    stdout: text('stdout').notNull().default(''),
+    stderr: text('stderr').notNull().default(''),
+    truncated: integer('truncated').notNull().default(0),
+    signal: text('signal').notNull().default(''),
+    triggeredBy: text('triggeredBy').notNull().default('ui'),
+    metricCalls: integer('metricCalls').notNull().default(0),
+  },
+  (table) => [
+    index('idx_runs_started').on(sql`${table.startedAt} DESC`),
+    index('idx_runs_script').on(table.script, sql`${table.startedAt} DESC`),
+  ]
+)
 
--- 键值设置表。PIN 的散列与 epoch 落在这里（见 backstage/services/pin.service.ts），
--- **不在配置文件里** —— 凭据是运行期产生的状态，配置文件是人工维护的声明，
--- 两者混在一处会让人以为「改配置文件就能改密码」。
---
--- ⚠️ 这张表是「加表」而不是「改表」：已有库上 ensureSchema 会直接补建，
--- 不需要迁移，也不会碰到任何现存数据。这是它没进 LEGACY_TABLES 的原因。
-CREATE TABLE IF NOT EXISTS settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-`
+/**
+ * 键值设置表。
+ *
+ * PIN 的散列与 epoch 落在这里（见 backstage/services/pin.service.ts），**不在配置
+ * 文件里** —— 凭据是运行期产生的状态，配置文件是人工维护的声明，两者混在一处
+ * 会让人以为「改配置文件就能改密码」。
+ */
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+})
 
-/** 已知的、需要显式迁移才能打开的旧结构（表名 -> 说明）。 */
+/**
+ * 已知的、需要显式迁移才能打开的旧结构（表名 -> 说明）。
+ *
+ * ⚠️ 迁移系统接管的是「当前结构往后的演进」；它管不到这些**更早**的表名。
+ * 撞到就直接抛错，运行时不做兼容搬运 —— 静默猜一个映射比停下来问贵得多。
+ */
 export const LEGACY_TABLES: Record<string, string> = {
   clipboard_items: '剪切板表在 v0.1 改名为 clipboard_entries 并加了 idemKey。',
 }

@@ -231,7 +231,7 @@ function sessionLifetimeMs(): number {
  */
 export async function setupPin(input: unknown, ip: string): Promise<AuthResult> {
   assertNotRateLimited(ip)
-  if (isPinConfigured()) {
+  if (await isPinConfigured()) {
     return { ok: false, errors: { pin: ['PIN 已设置，请直接解锁'] } }
   }
   const parsed = SetupPinSchema.safeParse(input)
@@ -251,7 +251,7 @@ export async function setupPin(input: unknown, ip: string): Promise<AuthResult> 
  */
 export async function loginWithPin(input: unknown, ip: string): Promise<AuthResult> {
   assertNotRateLimited(ip)
-  if (!isPinConfigured()) {
+  if (!(await isPinConfigured())) {
     return { ok: false, errors: { pin: ['尚未设置 PIN'] } }
   }
   const parsed = UnlockPinSchema.safeParse(input)
@@ -275,7 +275,7 @@ export async function loginWithPin(input: unknown, ip: string): Promise<AuthResu
  */
 export async function updatePin(input: unknown, ip: string): Promise<AuthResult> {
   assertNotRateLimited(ip)
-  if (!isPinConfigured()) {
+  if (!(await isPinConfigured())) {
     return { ok: false, errors: { currentPin: ['尚未设置 PIN'] } }
   }
   const parsed = UpdatePinSchema.safeParse(input)

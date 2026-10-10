@@ -51,7 +51,7 @@ export async function GET() {
   try {
     const { config, sandbox } = getConfig()
     await sandbox.ensureRoots()
-    ensureSchema()
+    await ensureSchema()
     // 只做 existsSync 判定，不读内容、不返回路径。
     const rootExists = config.rootPath !== '' && fs.existsSync(config.rootPath)
     return NextResponse.json({

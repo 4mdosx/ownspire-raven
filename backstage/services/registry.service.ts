@@ -352,6 +352,6 @@ export async function removeService(id: string): Promise<{ removed: boolean }> {
   await writeRegistryFile(document.defs.filter((_, position) => position !== index))
   // 「最新快照」跟着定义一起消失。历史样本/指标不在这里删：database.ts 没有暴露
   // 按服务删除历史的入口（不该在这里手写 SQL），它们会被 historyLimit 自然修剪。
-  dbSnapshotDelete(id)
+  await dbSnapshotDelete(id)
   return { removed: true }
 }

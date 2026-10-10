@@ -435,7 +435,7 @@ export async function runConfigChecks({ check, fail }: Checker): Promise<void> {
   await check('鉴权：没有 PIN 时拒绝签发会话（不是签一个空 epoch 的假会话）', async () => {
     const previous = process.env.SESSION_SECRET
     process.env.SESSION_SECRET = 'd'.repeat(40)
-    pin.clearStoredPin()
+    await pin.clearStoredPin()
     let code = ''
     try {
       await auth.createSessionToken()

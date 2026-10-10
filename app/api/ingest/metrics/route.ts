@@ -59,11 +59,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const at = Date.now()
-    dbMetricInsert(
+    await dbMetricInsert(
       parsed.metrics.map((metric) => ({ serviceId, metric: metric.metric, value: metric.value, unit: metric.unit, at }))
     )
-    dbMetricPrune(config.services.metricHistoryLimit)
-    if (consumed !== null) dbRunMetricCalls(consumed.runId, parsed.metrics.length)
+    await dbMetricPrune(config.services.metricHistoryLimit)
+    if (consumed !== null) await dbRunMetricCalls(consumed.runId, parsed.metrics.length)
     // runId 回给调用方（脚本可以据此自查这次上报被算到了哪条运行记录上）。
     return ok({ serviceId, accepted: parsed.metrics.length, metrics: parsed.metrics, runId: consumed === null ? null : consumed.runId })
   })

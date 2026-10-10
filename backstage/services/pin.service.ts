@@ -1,7 +1,7 @@
 import 'server-only'
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
-import { get, run } from '@/backstage/db/database'
+import { deleteSetting, getSetting, setSetting } from '@/backstage/db/database'
 
 /**
  * PIN 的存储与校验。
@@ -55,21 +55,25 @@ export type PinStatus = {
 // settings 键值读写
 // ---------------------------------------------------------------------------
 
-function readSetting(key: string): string | null {
-  const row = get<{ value: string }>('SELECT value FROM settings WHERE key = :key', { key })
-  return row?.value ?? null
+/**
+ * settings 键值读写。
+ *
+ * ⚠️ 这三个函数在 drizzle 之后变成 async —— 数据库层整体是异步的。
+ * 于是 `isPinConfigured()` / `getPinEpoch()` / `getPinStatus()` 也跟着变成
+ * async，调用方（登录页、auth.service）必须 await。这不是可选的：少了 await
+ * 拿到的是一个 Promise，而 `Promise !== null` 恒真 —— 表现为「永远显示已设置
+ * PIN」，而类型检查在 `await` 缺失处会直接报错，所以这条裂缝是能被 tsc 抓住的。
+ */
+async function readSetting(key: string): Promise<string | null> {
+  return getSetting(key)
 }
 
-function writeSetting(key: string, value: string): void {
-  run(
-    `INSERT INTO settings (key, value) VALUES (:key, :value)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    { key, value }
-  )
+async function writeSetting(key: string, value: string): Promise<void> {
+  await setSetting(key, value)
 }
 
-function deleteSetting(key: string): void {
-  run('DELETE FROM settings WHERE key = :key', { key })
+async function removeSetting(key: string): Promise<void> {
+  await deleteSetting(key)
 }
 
 // ---------------------------------------------------------------------------
@@ -77,19 +81,19 @@ function deleteSetting(key: string): void {
 // ---------------------------------------------------------------------------
 
 /** 有没有设过 PIN。登录页靠它决定进「设置」还是「解锁」。 */
-export function isPinConfigured(): boolean {
-  return readSetting(PIN_HASH_KEY) !== null
+export async function isPinConfigured(): Promise<boolean> {
+  return (await readSetting(PIN_HASH_KEY)) !== null
 }
 
 /** 当前 epoch。会话校验时与 cookie 里的比对，不一致即失效。 */
-export function getPinEpoch(): string | null {
+export async function getPinEpoch(): Promise<string | null> {
   return readSetting(PIN_EPOCH_KEY)
 }
 
-export function getPinStatus(): PinStatus {
+export async function getPinStatus(): Promise<PinStatus> {
   return {
-    configured: isPinConfigured(),
-    updatedAt: readSetting(PIN_UPDATED_AT_KEY),
+    configured: await isPinConfigured(),
+    updatedAt: await readSetting(PIN_UPDATED_AT_KEY),
   }
 }
 
@@ -103,9 +107,9 @@ export async function savePin(pin: string): Promise<string> {
   const hash = await hashPin(pin)
   const epoch = randomUUID()
   const updatedAt = new Date().toISOString()
-  writeSetting(PIN_HASH_KEY, hash)
-  writeSetting(PIN_EPOCH_KEY, epoch)
-  writeSetting(PIN_UPDATED_AT_KEY, updatedAt)
+  await writeSetting(PIN_HASH_KEY, hash)
+  await writeSetting(PIN_EPOCH_KEY, epoch)
+  await writeSetting(PIN_UPDATED_AT_KEY, updatedAt)
   return epoch
 }
 /**
@@ -116,16 +120,16 @@ export async function savePin(pin: string): Promise<string> {
  * 「没配」绝不能等价于「什么都对」。
  */
 export async function verifyStoredPin(pin: string): Promise<boolean> {
-  const stored = readSetting(PIN_HASH_KEY)
+  const stored = await readSetting(PIN_HASH_KEY)
   if (!stored) return false
   return verifyPinHash(pin, stored)
 }
 
 /** 清掉 PIN，回到「未设置」状态。运维忘了 PIN 时的逃生门。 */
-export function clearStoredPin(): void {
-  deleteSetting(PIN_HASH_KEY)
-  deleteSetting(PIN_EPOCH_KEY)
-  deleteSetting(PIN_UPDATED_AT_KEY)
+export async function clearStoredPin(): Promise<void> {
+  await removeSetting(PIN_HASH_KEY)
+  await removeSetting(PIN_EPOCH_KEY)
+  await removeSetting(PIN_UPDATED_AT_KEY)
 }
 
 // ---------------------------------------------------------------------------

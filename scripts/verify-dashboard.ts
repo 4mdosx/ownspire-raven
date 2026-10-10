@@ -547,7 +547,7 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
 
       const result = await runAction('action-svc', 'backup', { confirm: 'go-ahead' })
       if (result.status !== 'ok') throw new Error(`动作 status=${result.status}：${result.stderr}`)
-      const row = dbRunGet(result.recordId)
+      const row = await dbRunGet(result.recordId)
       if (row === undefined) throw new Error('动作没有写进 run_records')
       if (row.triggeredBy !== 'action:action-svc/backup') throw new Error(`triggeredBy=${row.triggeredBy}`)
 
@@ -565,9 +565,9 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
 
     // ============================================================== Dashboard
     await checker.check('Dashboard：totals 自洽、动作只给元数据、渲染时不跑脚本、不泄漏秘密', async () => {
-      const runsBefore = dbRunList(200).length
+      const runsBefore = (await dbRunList(200)).length
       const view = await getDashboard()
-      const runsAfter = dbRunList(200).length
+      const runsAfter = (await dbRunList(200)).length
       if (runsAfter !== runsBefore) throw new Error('渲染 dashboard 的过程中跑了脚本（run_records 条数变了）')
 
       const sum = view.totals.ok + view.totals.warn + view.totals.down + view.totals.unknown
@@ -616,8 +616,8 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
 
       const result = await collectAll({ force: true })
       if (!result.collected.includes('metrics-svc')) throw new Error(`collected=${result.collected.join(',')}`)
-      if (dbSampleHistory('metrics-svc', 10).length === 0) throw new Error('没有写 service_samples')
-      const rows = dbSnapshotAll().filter((row) => row.serviceId === 'metrics-svc')
+      if ((await dbSampleHistory('metrics-svc', 10)).length === 0) throw new Error('没有写 service_samples')
+      const rows = (await dbSnapshotAll()).filter((row) => row.serviceId === 'metrics-svc')
       if (rows.length !== 1) throw new Error(`service_snapshots 里有 ${rows.length} 条`)
       if (rows[0].status !== 'ok') throw new Error(`快照状态=${rows[0].status}：${rows[0].message}`)
       // 落库的 details 就是「重启之后缓存里还剩什么」：它必须能被读回成探针明细，
@@ -628,7 +628,7 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
         throw new Error(`details 读不回探针明细：${rows[0].details}`)
       }
 
-      const latest = dbMetricLatest('metrics-svc')
+      const latest = await dbMetricLatest('metrics-svc')
       const metric = latest.find((item) => item.metric === 'demo.db_bytes')
       if (metric === undefined) throw new Error(`指标没落库：${latest.map((item) => item.metric).join(',') || '(空)'}`)
       if (metric.value !== 1234) throw new Error(`指标值=${metric.value}`)
@@ -768,10 +768,10 @@ export async function runDashboardChecks(checker: VerifyChecker, options: { temp
       )
       const pushedBody = (await pushed.json()) as { ok?: boolean; accepted?: number }
       if (pushed.status !== 200 || pushedBody.accepted !== 1) throw new Error(`HTTP ${pushed.status}：${JSON.stringify(pushedBody)}`)
-      if (!dbMetricLatest('metrics-svc').some((metric) => metric.metric === 'pushed_bytes')) throw new Error('推上来的指标没落库')
+      if (!(await dbMetricLatest('metrics-svc')).some((metric) => metric.metric === 'pushed_bytes')) throw new Error('推上来的指标没落库')
 
       // 运行令牌：runner 在运行期登记，脚本拿 RAVEN_TOKEN 回调这里。
-      const runId = dbRunInsert({
+      const runId = await dbRunInsert({
         script: 'metric-ok.mjs',
         origin: 'metric',
         status: 'running',

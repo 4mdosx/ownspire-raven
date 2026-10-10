@@ -20,7 +20,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     if (!/^\d+$/.test(id)) {
       throw new ApiError('invalid_param', '运行记录 id 必须是整数。', 400)
     }
-    const run = getRun(Number.parseInt(id, 10))
+    const run = await getRun(Number.parseInt(id, 10))
     if (!run) {
       throw new ApiError('not_found', `没有 id 为 ${id} 的运行记录。`, 404)
     }

@@ -94,17 +94,47 @@ CLI 脚本要用的东西必须拆出去（例如 `backstage/lib/config-file.ts`
 
 ## 四、schema 改动的门禁
 
-`backstage/db/database.ts` 的 `ensureSchema` 只创建**当前**结构。
-`LEGACY_TABLES` 里登记过的旧表一旦存在就**直接抛错，不自动搬数据**。
+**结构由 drizzle 迁移产出，`backstage/db/schema.ts` 是唯一真相。**
+`database.ts` 里不再有任何 `CREATE TABLE` —— 运行时靠 `migrate()` 把库跑到最新。
 
-理由与 atlas 一致：真到有数据时再做一次显式、可验证的迁移 —— 那时数据形态与语义都要人工确认。
-**自动迁移的静默错误比停下来问更贵。**
+`LEGACY_TABLES` 里登记过的旧表一旦存在就**直接抛错，不自动搬数据**（迁移系统管不到
+比它更早的表名）。理由与 atlas / shrine / navi 一致：真到有数据时再做一次显式、
+可验证的迁移。**自动迁移的静默错误比停下来问更贵。**
+
+改 schema 的流程：
+
+```bash
+# 1. 改 backstage/db/schema.ts（唯一一处）
+# 2. 生成迁移
+npm run db:generate
+# 3. 门禁：schema.ts 与 drizzle/ 是否一致
+npm run db:check
+# 4. 跑起来时自动迁移（也可以手动）
+npm run db:migrate
+```
+
+⚠️ **别信 `drizzle-kit check`。** 实测（rc.4）在「schema 改了、迁移没生成」这种最该拦的
+情况下它照样输出 `Everything's fine` 并以 0 退出 —— 它比对的是迁移文件之间的自洽性，
+不是「schema 与最新 snapshot 是否一致」。`db:check` 用的判据是**跑一次 generate 看
+`drizzle/` 有没有变脏**，generate 是纯静态的（不连库），所以可以随便跑。
+
+⚠️ **两个包锁精确版本**（`drizzle-orm` / `drizzle-kit` 都是 `1.0.0-rc.4`，没有 `^`）。
+稳定版 0.45.x 没有 `node:sqlite` 驱动；而 `^1.0.0-rc.4` 的语义是「>=rc.4 <2.0.0」，
+会把后续所有 rc 一路放进可接受范围。
+
+⚠️ **`drizzle/` 是运行时读的目录**，Dockerfile 里有 `COPY drizzle/`，别删。
 
 改 schema 前先看库里有多少条：
 
 ```bash
 sqlite3 "$RAVEN_DATA_DIR/raven.db" "SELECT COUNT(*) FROM clipboard_entries"
 ```
+
+### 数据层是异步的
+
+`ensureSchema()` / `pingDatabase()` / 所有 `db*` 函数都返回 Promise。同步调用会拿到
+一个 Promise —— `if (promise)` 恒真，表现为「永远显示已设置 PIN」这类怪症状。
+这类裂缝 tsc 能抓住（缺 `await` 处直接报错），所以**别用 `as` 或 `void` 绕**。
 
 ---
 

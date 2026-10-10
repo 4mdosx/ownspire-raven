@@ -189,7 +189,7 @@ function actionMeta(action: ActionDef): DashboardService['actions'][number] {
   }
 }
 
-function describe(snapshot: ServiceSnapshot, health: HealthReport): DashboardService {
+async function describe(snapshot: ServiceSnapshot, health: HealthReport): Promise<DashboardService> {
   const def = snapshot.def
   return {
     id: def.id,
@@ -206,10 +206,10 @@ function describe(snapshot: ServiceSnapshot, health: HealthReport): DashboardSer
     baseUrl: def.baseUrl,
     tags: def.tags ?? [],
     health,
-    metrics: dbMetricLatest(def.id),
+    metrics: await dbMetricLatest(def.id),
     // 顺序保持 database.ts 的原样（最新在前）；画图方向交给前端，
     // 服务端再翻一次只会让两边的「第一条」含义不同。
-    history: dbSampleHistory(def.id, 50),
+    history: await dbSampleHistory(def.id, 50),
     actions: (def.actions ?? []).map(actionMeta),
     metricProbes: (def.metrics ?? []).map((probe) => ({
       id: probe.id,
@@ -225,7 +225,7 @@ export async function getDashboard(options: { force?: boolean } = {}): Promise<D
   const snapshots = await loadRegistry()
   const services: DashboardService[] = []
   for (const snapshot of snapshots) {
-    services.push(describe(snapshot, await checkService(snapshot, { force: options.force })))
+    services.push(await describe(snapshot, await checkService(snapshot, { force: options.force })))
   }
   const totals = { ok: 0, warn: 0, down: 0, unknown: 0, total: services.length }
   for (const service of services) totals[service.health.status] += 1
@@ -278,8 +278,8 @@ export async function collectAll(options: { force?: boolean } = {}): Promise<{ c
     }
   }
 
-  dbSamplePrune(config.services.historyLimit)
-  dbMetricPrune(config.services.metricHistoryLimit)
+  await dbSamplePrune(config.services.historyLimit)
+  await dbMetricPrune(config.services.metricHistoryLimit)
   return { collected, cached }
 }
 
@@ -313,8 +313,8 @@ export async function runMetricProbe(
   if (report.status === 'ok' && parsed.metrics.length > 0) {
     const at = Date.now()
     try {
-      dbMetricInsert(parsed.metrics.map((metric) => ({ serviceId, metric: metric.metric, value: metric.value, unit: metric.unit, at })))
-      dbMetricPrune(getConfig().config.services.metricHistoryLimit)
+      await dbMetricInsert(parsed.metrics.map((metric) => ({ serviceId, metric: metric.metric, value: metric.value, unit: metric.unit, at })))
+      await dbMetricPrune(getConfig().config.services.metricHistoryLimit)
     } catch (error) {
       console.error(`[raven] 指标落库失败（${serviceId}/${probeId}）：`, error)
     }

@@ -132,8 +132,8 @@ function rowToEntry(row: ClipboardRow, position: number): ClipboardEntry {
 }
 
 async function entryWithPosition(row: ClipboardRow): Promise<ClipboardEntry> {
-  const scan = Math.min(POSITION_SCAN_LIMIT, Math.max(1, dbClipboardCount()))
-  const rows = dbClipboardList(scan, 0)
+  const scan = Math.min(POSITION_SCAN_LIMIT, Math.max(1, await dbClipboardCount()))
+  const rows = await dbClipboardList(scan, 0)
   const index = rows.findIndex((item) => item.id === row.id)
   return rowToEntry(row, index === -1 ? scan : index + 1)
 }
@@ -297,7 +297,7 @@ export async function createText(input: {
 
   const idemKey = typeof input.idemKey === 'string' && input.idemKey !== '' ? input.idemKey : null
   if (idemKey !== null) {
-    const existing = dbClipboardByIdem(idemKey)
+    const existing = await dbClipboardByIdem(idemKey)
     // 网络抖动导致的重发不该产生第二条；顺序也不该动（位置保持原样）。
     if (existing) return { entry: await entryWithPosition(existing), evicted: [] }
   }
@@ -312,8 +312,8 @@ export async function createText(input: {
     idemKey,
     createdAt: nextCreatedAt(),
   }
-  dbClipboardInsert(row)
-  const evicted = dbClipboardPrune(config.clipboard.maxItems).map((item) => item.id)
+  await dbClipboardInsert(row)
+  const evicted = (await dbClipboardPrune(config.clipboard.maxItems)).map((item) => item.id)
   await deleteAttachmentDirs(sandbox, evicted)
   return { entry: await entryWithPosition(row), evicted }
 }
@@ -369,10 +369,10 @@ export async function createWithAttachments(input: {
       idemKey: null,
       createdAt: nextCreatedAt(),
     }
-    dbClipboardInsert(row)
+    await dbClipboardInsert(row)
     stored = true
 
-    const evicted = dbClipboardPrune(config.clipboard.maxItems).map((item) => item.id)
+    const evicted = (await dbClipboardPrune(config.clipboard.maxItems)).map((item) => item.id)
     await deleteAttachmentDirs(sandbox, evicted)
     return { entry: await entryWithPosition(row), evicted }
   } catch (error) {
@@ -401,22 +401,22 @@ export async function list(input: {
   const limit = Math.min(200, Math.max(1, Math.trunc(input.limit ?? 50)))
   const offset = Math.max(0, Math.trunc(input.offset ?? 0))
   const query = typeof input.query === 'string' && input.query.trim() !== '' ? input.query.trim() : undefined
-  const rows = dbClipboardList(limit, offset, query)
+  const rows = await dbClipboardList(limit, offset, query)
   const entries = rows.map((row, index) => rowToEntry(row, offset + index + 1))
   // total 是**队列总长**，不是过滤命中数：database.ts 没有带查询的计数助手，
   // 而位置/分页要用的是队列尺度。过滤结果的条数看 entries.length。
-  return { entries, total: dbClipboardCount(), maxItems: config.clipboard.maxItems }
+  return { entries, total: await dbClipboardCount(), maxItems: config.clipboard.maxItems }
 }
 
 export async function get(id: string): Promise<ClipboardEntry> {
-  const row = dbClipboardGet(assertEntryId(id))
+  const row = await dbClipboardGet(assertEntryId(id))
   if (!row) throw new SandboxError('not_found', '剪切板里没有这一条。', 404)
   return entryWithPosition(row)
 }
 
 export async function updateText(id: string, text: string): Promise<ClipboardEntry> {
   const { config } = getConfig()
-  const existing = dbClipboardGet(assertEntryId(id))
+  const existing = await dbClipboardGet(assertEntryId(id))
   if (!existing) throw new SandboxError('not_found', '剪切板里没有这一条。', 404)
   const value = typeof text === 'string' ? text : ''
   if (value === '') {
@@ -429,12 +429,12 @@ export async function updateText(id: string, text: string): Promise<ClipboardEnt
   // 决定，两者不变位置就不变 —— 纠错不该把这一条顶到队首。
   // insert 失败时把原行写回去，尽力不留下空洞（单用户场景下这一步几乎不会失败）。
   const next: ClipboardRow = { ...existing, text: value, bytes }
-  dbClipboardDelete(existing.id)
+  await dbClipboardDelete(existing.id)
   try {
-    dbClipboardInsert(next)
+    await dbClipboardInsert(next)
   } catch (error) {
     try {
-      dbClipboardInsert(existing)
+      await dbClipboardInsert(existing)
     } catch (restoreError) {
       console.error('[raven] 剪切板纠错回滚失败：', restoreError)
     }
@@ -447,7 +447,7 @@ export async function remove(id: string): Promise<{ removed: boolean }> {
   const { sandbox } = getConfig()
   await sandbox.ensureRoots()
   const entryId = assertEntryId(id)
-  const removed = dbClipboardDelete(entryId)
+  const removed = await dbClipboardDelete(entryId)
   // 即使库里没有这一条也扫一次目录：历史崩溃可能留下孤儿附件目录。
   await deleteAttachmentDirs(sandbox, [entryId])
   return { removed }
@@ -456,7 +456,7 @@ export async function remove(id: string): Promise<{ removed: boolean }> {
 export async function clear(): Promise<{ removed: number }> {
   const { sandbox } = getConfig()
   await sandbox.ensureRoots()
-  const removed = dbClipboardClear()
+  const removed = await dbClipboardClear()
   // 库清空之后 id 已经没地方查了。剪切板根目录下**只有** `<entryId>/` 一层，
   // 所以直接扫一层删干净，顺手把历史遗留的孤儿目录也收掉。
   let children: string[] = []
@@ -491,7 +491,7 @@ export async function clipboardAttachmentPath(entryId: string, name: string): Pr
   const { sandbox } = getConfig()
   await sandbox.ensureRoots()
   const id = assertEntryId(entryId)
-  const row = dbClipboardGet(id)
+  const row = await dbClipboardGet(id)
   if (!row) throw new SandboxError('not_found', '剪切板里没有这一条。', 404)
 
   const requested = sanitizeAttachmentName(name, 0)

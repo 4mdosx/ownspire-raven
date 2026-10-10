@@ -21,7 +21,7 @@ import { ensureSchema } from '@/backstage/db/database'
 export async function POST(request: Request): Promise<NextResponse> {
   const ip = clientIp(request)
   return handle(async () => {
-    ensureSchema()
+    await ensureSchema()
     const body = await readJson(request)
 
     const parsed = await updatePin(

@@ -18,7 +18,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const script = searchParam(request, 'script')
     return ok({
-      runs: listRuns(toInt(searchParam(request, 'limit'), 50, 1, 500), script ?? undefined),
+      runs: await listRuns(toInt(searchParam(request, 'limit'), 50, 1, 500), script ?? undefined),
     })
   })
 }

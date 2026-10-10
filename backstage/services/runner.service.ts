@@ -368,7 +368,7 @@ export async function listScripts(): Promise<ScriptInfo[]> {
         mtimeMs: stats.mtimeMs,
         description: await readDescription(path.join(sandbox.scriptsRoot, dirent.name)),
       }
-      const last = dbRunList(1, dirent.name)[0]
+      const last = (await dbRunList(1, dirent.name))[0]
       if (last) {
         info.lastRun = {
           // 库里只会写这五种状态（见 RunStatus），直接收窄。
@@ -438,7 +438,7 @@ async function executeScript(input: ExecuteInput): Promise<RunResult> {
 
   // 先插一条 running：脚本崩溃/机器断电时，历史里留下的是「跑到一半」而不是
   // 什么都没有 —— 后者会被误读成「从来没跑过」。
-  const recordId = dbRunInsert({
+  const recordId = await dbRunInsert({
     script: input.script,
     origin: input.origin,
     status: 'running',
@@ -536,7 +536,7 @@ async function executeScript(input: ExecuteInput): Promise<RunResult> {
 
   // 库里存的是**同一份已截断文本**：运行历史和流式展示说的是同一件事，
   // 否则事后追查会看到「界面截断了、库里还在长」这种对不上的情况。
-  dbRunFinish(recordId, {
+  await dbRunFinish(recordId, {
     status,
     exitCode: outcome.code,
     endedAt,
@@ -546,7 +546,7 @@ async function executeScript(input: ExecuteInput): Promise<RunResult> {
     truncated: stdoutSink.isTruncated || stderrSink.isTruncated ? 1 : 0,
     signal: outcome.signal ?? '',
   })
-  dbRunPrune(RUN_HISTORY_LIMIT)
+  await dbRunPrune(RUN_HISTORY_LIMIT)
 
   return {
     status,
@@ -680,11 +680,11 @@ export async function runTempScript(input: RunTempScriptInput): Promise<RunResul
   })
 }
 
-export function listRuns(limit: number, script?: string): RunRow[] {
+export async function listRuns(limit: number, script?: string): Promise<RunRow[]> {
   const cap = Number.isFinite(limit) ? Math.trunc(limit) : 50
-  return dbRunList(Math.min(500, Math.max(1, cap)), script !== undefined && script !== '' ? script : undefined)
+  return await dbRunList(Math.min(500, Math.max(1, cap)), script !== undefined && script !== '' ? script : undefined)
 }
 
-export function getRun(id: number): RunRow | undefined {
-  return dbRunGet(id)
+export async function getRun(id: number): Promise<RunRow | undefined> {
+  return await dbRunGet(id)
 }

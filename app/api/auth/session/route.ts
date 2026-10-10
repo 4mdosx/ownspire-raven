@@ -18,7 +18,7 @@ import { ensureSchema } from '@/backstage/db/database'
  */
 export async function GET(): Promise<NextResponse> {
   return handle(async () => {
-    ensureSchema()
+    await ensureSchema()
     const session = await currentSession()
     return NextResponse.json({
       ok: true,

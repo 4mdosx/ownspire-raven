@@ -1,0 +1,649 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "2abbd739-1c7f-4fca-aac8-64618920e43b",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "ddl": [
+    {
+      "name": "clipboard_entries",
+      "entityType": "tables"
+    },
+    {
+      "name": "run_records",
+      "entityType": "tables"
+    },
+    {
+      "name": "service_metrics",
+      "entityType": "tables"
+    },
+    {
+      "name": "service_samples",
+      "entityType": "tables"
+    },
+    {
+      "name": "service_snapshots",
+      "entityType": "tables"
+    },
+    {
+      "name": "settings",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "text",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "bytes",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'web'",
+      "generated": null,
+      "name": "source",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'[]'",
+      "generated": null,
+      "name": "attachments",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attachBytes",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "idemKey",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "clipboard_entries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "script",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'workspace'",
+      "generated": null,
+      "name": "origin",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "exitCode",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "startedAt",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "endedAt",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "durationMs",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "stdout",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "stderr",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "truncated",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "signal",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'ui'",
+      "generated": null,
+      "name": "triggeredBy",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "metricCalls",
+      "entityType": "columns",
+      "table": "run_records"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "serviceId",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "metric",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "real",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "value",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "unit",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "at",
+      "entityType": "columns",
+      "table": "service_metrics"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "serviceId",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "latencyMs",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "message",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "checkedAt",
+      "entityType": "columns",
+      "table": "service_samples"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "serviceId",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "latencyMs",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "message",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "''",
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'collector'",
+      "generated": null,
+      "name": "source",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'{}'",
+      "generated": null,
+      "name": "details",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "checkedAt",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "okCount",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "totalCount",
+      "entityType": "columns",
+      "table": "service_snapshots"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "key",
+      "entityType": "columns",
+      "table": "settings"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "value",
+      "entityType": "columns",
+      "table": "settings"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "clipboard_entries_pk",
+      "table": "clipboard_entries",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "run_records_pk",
+      "table": "run_records",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "service_metrics_pk",
+      "table": "service_metrics",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "service_samples_pk",
+      "table": "service_samples",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "serviceId"
+      ],
+      "nameExplicit": false,
+      "name": "service_snapshots_pk",
+      "table": "service_snapshots",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "key"
+      ],
+      "nameExplicit": false,
+      "name": "settings_pk",
+      "table": "settings",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "\"createdAt\" DESC",
+          "isExpression": true
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_clipboard_created",
+      "entityType": "indexes",
+      "table": "clipboard_entries"
+    },
+    {
+      "columns": [
+        {
+          "value": "idemKey",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"clipboard_entries\".\"idemKey\" IS NOT NULL",
+      "origin": "manual",
+      "name": "idx_clipboard_idem",
+      "entityType": "indexes",
+      "table": "clipboard_entries"
+    },
+    {
+      "columns": [
+        {
+          "value": "\"startedAt\" DESC",
+          "isExpression": true
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_runs_started",
+      "entityType": "indexes",
+      "table": "run_records"
+    },
+    {
+      "columns": [
+        {
+          "value": "script",
+          "isExpression": false
+        },
+        {
+          "value": "\"startedAt\" DESC",
+          "isExpression": true
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_runs_script",
+      "entityType": "indexes",
+      "table": "run_records"
+    },
+    {
+      "columns": [
+        {
+          "value": "serviceId",
+          "isExpression": false
+        },
+        {
+          "value": "metric",
+          "isExpression": false
+        },
+        {
+          "value": "\"at\" DESC",
+          "isExpression": true
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_metrics_service",
+      "entityType": "indexes",
+      "table": "service_metrics"
+    },
+    {
+      "columns": [
+        {
+          "value": "serviceId",
+          "isExpression": false
+        },
+        {
+          "value": "\"checkedAt\" DESC",
+          "isExpression": true
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_samples_service",
+      "entityType": "indexes",
+      "table": "service_samples"
+    }
+  ],
+  "renames": []
+}

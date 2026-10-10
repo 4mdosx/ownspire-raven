@@ -44,6 +44,10 @@ ENV RAVEN_CONFIG=/data/raven/raven.config.json
 COPY --from=build --chown=node:node /app/package.json ./
 COPY --from=build --chown=node:node /app/next.config.js ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
+# ⚠️ drizzle/ 是**运行时**读的目录（database.ts 的 migrationsFolder()），不是构建期
+# 打包进 bundle 的资源：启动时会按里面的迁移文件把库跑到最新结构。少了这一行，
+# 容器起来之后第一次开库会「找不到 drizzle 目录」而炸，且现象看起来像权限问题。
+COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/config ./config
