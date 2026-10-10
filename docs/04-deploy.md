@@ -67,9 +67,10 @@ SESSION_SECRET=<48 字节随机串>
   },
   "clipboard": { "maxItems": 200 },
   "auth": {
-    "username": "admin",
-    "passwordHash": "scrypt$16384$8$1$...",   // npm run hash-password 生成
-    "sessionHours": 168
+    // 这里只有策略，没有凭据。PIN 在首次访问登录页时于浏览器里设置，
+    // 存在数据卷里的数据库（settings 表），不在这份配置里。
+    "sessionHours": 168,
+    "loginRateLimit": { "windowSeconds": 300, "maxFailures": 10 }
   },
   "services": {
     "registryFile": "services.json",

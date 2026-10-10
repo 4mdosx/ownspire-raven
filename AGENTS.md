@@ -125,8 +125,33 @@ npm run verify:config   # 只跑配置/沙箱/鉴权
 3. `resolveScript()` 把 `path.join(scriptsRoot, name)` 这个**绝对路径**传给了
    `resolveExisting()`，而后者内部会走 `parseRelativePath()`（刻意拒绝绝对路径）——
    于是**每一个合法脚本名都被拒**，报错还是「不接受绝对路径」，看起来像调用方写错了。
-   同理 `verifyPasswordHash()` 只判「六个字段」，`scrypt$1$2$3$4$5` 恰好也是六个字段，
-   于是畸形配置项让「密码错误」变成 500。两处都已修，断言留着。
+   同理 `verifyPinHash()` 只判「六个字段」，`scrypt$1$2$3$4$5` 恰好也是六个字段，
+   于是畸形值让「PIN 不正确」变成 500。两处都已修，断言留着。
+
+### 登录：PIN，不是账号密码
+
+登录只有 4 位数字 PIN，**首次访问时在浏览器里设置**，散列存 SQLite 的 `settings` 表。
+配置文件里**没有凭据**，`auth` 段只剩 `sessionHours` 与 `loginRateLimit`。
+
+三条不能改回去的决定：
+
+1. **PIN 不进配置文件。** 凭据是运行期产生的状态，而配置文件必须在第一次登录
+   **之前**就存在 —— 「首次设置」这件事根本没法用配置文件表达。附带好处是它不会
+   跟着配置进版本库、被 diff、在日志里露面。
+2. **旧字段必须报错，不能静默忽略。** zod 的 `object()` 会剥掉未声明的字段，
+   所以只靠 schema 的话，一份带 `auth.password` 的旧配置会**静默通过**：服务照常起来、
+   PIN 照常要求，而配置里那个密码看起来「还在管用」。`assertNoLegacyAuthFields()`
+   从**原始 JSON**（不是 zod 产物）上查，就是为了绕开剥字段这一层。
+3. **会话绑 `pinEpoch` 而不是配置指纹。** 换 PIN → epoch 变 → 旧会话失效。
+   指纹方案要在每次校验时读配置文件，而 proxy 跑在 Edge runtime 里读不了。
+
+⚠️ **已知缺口（不是这一轮引入的）**：40 个 route 里只有
+`/api/services/registry/[id]` 真的调了 `requireSession()`，其余全靠 `proxy.ts` 一道门。
+proxy 只验签、读不了 SQLite，所以**换 PIN / 换密钥后旧 cookie 仍能访问页面与 API**。
+`pinEpoch` 校验只发生在真正调了 `requireSession()` 的那条路径上。
+要真正做到「换 PIN 立即作废所有会话」，得给每个路由补 `requireSession()`。
+
+⚠️ 4 位 PIN 只有 10000 种可能，`loginRateLimit` **不是可选项是必需品**。
 
 注意验证脚本里反复踩的点：
 

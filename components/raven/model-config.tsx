@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Spinner } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
-import { ErrorBar, StatusPill, useToast } from '@/components/ui/toast'
+import { ErrorBar, StatusPill, useToast } from '@/components/raven/feedback'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -26,14 +26,17 @@ import { cn } from '@/lib/utils'
  * ② **级联删除必须确认，且要说清连带删了什么。** 界面不显示「还有 2 个模型」，
  *    用户点下去之后才发现模型没了 —— 那比不给删除功能更糟。
  * ③ **失败时保留用户输入。** 写操作失败后表单内容还在，重试不用重打一遍 key。
+ *
+ * ⚠️ **2026-10-09：key 的环境变量名那一栏删了。** 服务端不再有 env 兜底，
+ * 所以「填个变量名」在这里是一个**填了也不会生效**的输入框 ——
+ * 而那比不提供更糟：用户会以为配好了，去查「为什么还是没生效」。
  */
 
 type ProviderView = {
   id: string
   label: string
-  keyEnvVar: string
   apiKeySet: boolean
-  apiKeySource: 'db' | 'env' | 'none'
+  apiKeySource: 'db' | 'none'
   apiKeyHint: string | null
   defaultProtocol: string
   updatedAt: number
@@ -163,7 +166,7 @@ export function ModelConfig({ agentConfigured }: { agentConfigured: boolean }) {
           <code className="font-mono text-foreground">{data.defaultModel}</code>
         ) : (
           <span className="text-muted-foreground">
-            未设置 —— 用 <code className="font-mono">AGENT_MODEL</code> 指定
+            未设置 —— 在下面的「模型」里加一个，它就是默认的
           </span>
         )}
         。改目录后立即生效，不需要重启。
@@ -300,8 +303,8 @@ function ProvidersSection({
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">厂商</h2>
       <p className="text-xs text-muted-foreground">
-        key 存在数据库里，但<b>永不回显</b>：这里只显示末四位与来源。
-        来源标成「环境变量」时改这里没用，要去部署配置里改。
+        key 存在数据库里，但<b>永不回显</b>：这里只显示末四位。
+        这是它<b>唯一的来源</b>—— 环境变量不再参与。
       </p>
       <div className="flex flex-col divide-y rounded-md border">
         {providers.map((provider) => (
@@ -331,7 +334,6 @@ function ProviderRow({
   onDelete: (id: string) => void
 }) {
   const [label, setLabel] = useState(provider.label)
-  const [keyEnvVar, setKeyEnvVar] = useState(provider.keyEnvVar)
   const [protocol, setProtocol] = useState(provider.defaultProtocol)
   // ⚠️ key 输入框**故意不预填**：服务端不会回显它，预填一个掩码进去，
   // 用户会以为那就是完整的 key，然后一保存就把真 key 换成 ****1234。
@@ -342,22 +344,16 @@ function ProviderRow({
       <div className="flex flex-wrap items-center gap-2">
         <code className="font-mono text-xs text-muted-foreground">{provider.id}</code>
         <StatusPill
-          tone={provider.apiKeySet ? (provider.apiKeySource === 'db' ? 'ok' : 'busy') : 'warn'}
-          title={
-            provider.apiKeySet
-              ? `key 来自${provider.apiKeySource === 'db' ? '数据库（界面填的）' : '环境变量'}`
-              : '两处都没有配置 key —— 调用会失败'
-          }
+          tone={provider.apiKeySet ? 'ok' : 'warn'}
+          title={provider.apiKeySet ? 'key 已配置（存在数据库里）' : '未配置 key —— 调用会失败'}
         >
-          {provider.apiKeySet
-            ? `key ${provider.apiKeyHint} · ${provider.apiKeySource === 'db' ? '数据库' : '环境变量'}`
-            : '未配置 key'}
+          {provider.apiKeySet ? `key ${provider.apiKeyHint}` : '未配置 key'}
         </StatusPill>
         <div className="ml-auto flex gap-1">
           <Button
             size="sm"
-            disabled={busy || (label === provider.label && keyEnvVar === provider.keyEnvVar && protocol === provider.defaultProtocol && apiKey === '')}
-            onClick={() => onSave(provider.id, { label, keyEnvVar, defaultProtocol: protocol, ...(apiKey === '' ? {} : { apiKey }) })}
+            disabled={busy || (label === provider.label && protocol === provider.defaultProtocol && apiKey === '')}
+            onClick={() => onSave(provider.id, { label, defaultProtocol: protocol, ...(apiKey === '' ? {} : { apiKey }) })}
           >
             保存
           </Button>
@@ -367,12 +363,9 @@ function ProviderRow({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Field label="显示名">
           <Input value={label} onChange={(event) => setLabel(event.target.value)} />
-        </Field>
-        <Field label="key 的环境变量名" hint="兜底来源；库里填了 key 就不看它">
-          <Input value={keyEnvVar} onChange={(event) => setKeyEnvVar(event.target.value)} className="font-mono" />
         </Field>
         <Field label="默认协议">
           <Select value={protocol} onChange={(event) => setProtocol(event.target.value)}>
@@ -407,7 +400,7 @@ function ProviderRow({
               size="sm"
               variant="ghost"
               disabled={busy}
-              title="清空数据库里的 key，改回用环境变量"
+              title="清空数据库里的 key"
               onClick={() => onSave(provider.id, { clearApiKey: true })}
             >
               清空

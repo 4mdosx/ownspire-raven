@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Spinner } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
-import { ErrorBar, StatusPill, useToast, type StatusTone } from '@/components/ui/toast'
+import { ErrorBar, StatusPill, useToast, type StatusTone } from '@/components/raven/feedback'
 import { apiGet, apiPost, apiStream } from '@/lib/api'
 import { formatDateTime, formatLatency, formatMetric, humanDuration, relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'

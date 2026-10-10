@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export default function AgentPage() {
   const config = publicConfig()
   return (
-    <RavenShell version={config.version} username={config.username} maxWidth="wide">
+    <RavenShell version={config.version} maxWidth="wide">
       <AgentChat />
     </RavenShell>
   )

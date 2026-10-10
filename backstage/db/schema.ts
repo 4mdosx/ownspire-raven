@@ -80,6 +80,17 @@ CREATE TABLE IF NOT EXISTS run_records (
 );
 CREATE INDEX IF NOT EXISTS idx_runs_started ON run_records (startedAt DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_script ON run_records (script, startedAt DESC);
+
+-- 键值设置表。PIN 的散列与 epoch 落在这里（见 backstage/services/pin.service.ts），
+-- **不在配置文件里** —— 凭据是运行期产生的状态，配置文件是人工维护的声明，
+-- 两者混在一处会让人以为「改配置文件就能改密码」。
+--
+-- ⚠️ 这张表是「加表」而不是「改表」：已有库上 ensureSchema 会直接补建，
+-- 不需要迁移，也不会碰到任何现存数据。这是它没进 LEGACY_TABLES 的原因。
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `
 
 /** 已知的、需要显式迁移才能打开的旧结构（表名 -> 说明）。 */

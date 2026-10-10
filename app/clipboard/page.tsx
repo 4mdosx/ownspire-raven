@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export default function ClipboardPage() {
   const config = publicConfig()
   return (
-    <RavenShell version={config.version} username={config.username} maxWidth="normal">
+    <RavenShell version={config.version} maxWidth="normal">
       <ClipboardBoard publicConfig={config} />
     </RavenShell>
   )

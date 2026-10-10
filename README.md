@@ -109,15 +109,28 @@ rootPath/
 
 ## 登录
 
-单账号、全权限，账号密码写在配置里。想避免明文就用散列：
+**没有账号密码，只有一个 PIN。** 首次打开登录页时设置 4 位数字 PIN，之后每次输入它解锁。
 
-```bash
-npm run hash-password '你的密码'      # 输出 scrypt$... ，填进 auth.passwordHash，删掉 auth.password
+PIN 存在 SQLite 的 `settings` 表里，**不在配置文件里** —— 凭据是运行期产生的状态，而配置文件必须在第一次登录之前就存在。配置文件里的 `auth` 段只剩策略参数：
+
+```jsonc
+{
+  "auth": {
+    "sessionHours": 168,                              // 会话有效期，默认 7 天
+    "loginRateLimit": { "windowSeconds": 300, "maxFailures": 10 }
+  }
+}
 ```
 
-改用户名或密码会让已签发的会话**立即失效**（会话里带配置指纹，不是靠过期时间兜）。连续登录失败会按 IP 限流（`auth.loginRateLimit`）。
+旧配置文件里如果还留着 `auth.username` / `password` / `passwordHash`，**服务会明确报错拒绝启动** —— 而不是静默忽略它们。留着它们的话配置看起来「密码还有效」，实际上早已不起作用。
+
+**换 PIN 会让所有已签发的会话立即失效**：会话里带的是签发时的 `pinEpoch`，与数据库里的当前值不一致即视为无效。换密钥（`SESSION_SECRET`）同理。
+
+⚠️ 4 位 PIN 只有 10000 种可能，所以 `loginRateLimit` **不是可选项，是必需的**。连续登录失败会按 IP 限流（默认 5 分钟内 10 次）。
 
 登录态是 HttpOnly 的签名 JWT，签名密钥是 `SESSION_SECRET`（**必填**，至少 16 字符）。换掉它等于让所有人重新登录 —— 那是它的用途。
+
+**忘记 PIN 怎么办**：数据库里的 `settings` 表删掉 `pin.hash` / `pin.epoch` / `pin.updatedAt` 三行即可回到「首次设置」状态（需要能访问 `RAVEN_DATA_DIR`）。
 
 ---
 

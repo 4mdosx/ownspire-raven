@@ -4,18 +4,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/components/ui/toast'
+import { useToast } from '@/components/raven/feedback'
 import { apiGet, apiPost, isUnauthorized } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 /**
  * 全站顶栏。
  *
- * 这一层只做三件事：导航、显示当前账号、退出登录。**不放任何数据获取**——
- * 四个页面的数据结构完全不同，一个「公共数据层」最后会变成四个页面各自的
- * 特例堆在一个组件里。会话只在这里读一次（为了显示用户名），失败时不做
+ * 这一层只做三件事：导航、显示当前会话状态、退出登录。**不放任何数据获取**——
+ * 六个页面的数据结构完全不同，一个「公共数据层」最后会变成六个页面各自的
+ * 特例堆在一个组件里。会话只在这里读一次（为了显示「已解锁」），失败时不做
  * 跳转：proxy 已经保证了页面可达，客户端再跳一次会在网络抖动时把用户
- * 甩到登录页 —— 那是比「用户名显示成占位符」严重得多的体验事故。
+ * 甩到登录页 —— 那是比「状态显示成占位符」严重得多的体验事故。
+ *
+ * ⚠️ 这里**不再显示用户名**：PIN 登录没有「账号」这个概念，显示一个假的名字
+ * 只会让人以为自己记错了什么。现在显示的是「已解锁」这个状态本身。
  */
 
 const NAV = [
@@ -32,33 +35,35 @@ const NAV = [
 export function RavenShell({
   children,
   version,
-  username,
   maxWidth = 'wide',
 }: {
   children: React.ReactNode
   version: string
-  username: string
   /** `wide` 给文件管理器/日志（要吃满宽度），`normal` 给卡片型页面。 */
   maxWidth?: 'normal' | 'wide' | 'none'
 }) {
   const pathname = usePathname()
   const toast = useToast()
-  const [sessionName, setSessionName] = useState(username)
+  const [unlocked, setUnlocked] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
     void (async () => {
       try {
-        const body = await apiGet<{ session: { username?: string } | null }>('/api/auth/session', {}, { signal: controller.signal })
-        const name = body.session?.username
-        if (typeof name === 'string' && name !== '') setSessionName(name)
+        const body = await apiGet<{ session: { authenticated?: boolean } | null }>(
+          '/api/auth/session',
+          {},
+          { signal: controller.signal }
+        )
+        setUnlocked(body.session?.authenticated === true)
       } catch (error) {
-        // 401 说明 cookie 已经失效（改了密码 / 会话过期）。这时提示一下并
+        // 401 说明 cookie 已经失效（改了 PIN / 会话过期）。这时提示一下并
         // 由用户决定何时重新登录，**不**自动跳转：正在跑的脚本日志会被整页
         // 刷新清掉，而那是他此刻唯一在意的信息。其他错误（网络抖动）忽略，
-        // 顶栏上的名字退化成服务端给的配置值，不影响使用。
+        // 顶栏状态退化成「已解锁」，不影响使用。
         if (isUnauthorized(error)) {
+          setUnlocked(false)
           toast.error('登录状态已失效，写操作会被拒绝。', '重新登录后再操作；当前页面的数据仍可查看。')
         }
       }
@@ -118,8 +123,15 @@ export function RavenShell({
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-[11px] text-muted-foreground sm:inline" title="当前登录账号">
-              {sessionName}
+            <span
+              className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:inline"
+              title={unlocked ? 'PIN 已解锁' : '会话已失效，写操作会被拒绝'}
+            >
+              <span
+                aria-hidden
+                className={unlocked ? 'size-1.5 rounded-full bg-status-ok' : 'size-1.5 rounded-full bg-status-warn'}
+              />
+              {unlocked ? '已解锁' : '未解锁'}
             </span>
             <Button variant="ghost" size="sm" onClick={() => void logout()} loading={loggingOut} title="退出登录">
               退出登录

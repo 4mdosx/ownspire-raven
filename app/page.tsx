@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 export default function DashboardPage() {
   const config = publicConfig()
   return (
-    <RavenShell version={config.version} username={config.username} maxWidth="wide">
+    <RavenShell version={config.version} maxWidth="wide">
       <Dashboard publicConfig={config} />
     </RavenShell>
   )

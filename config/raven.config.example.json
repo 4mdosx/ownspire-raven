@@ -15,9 +15,7 @@
     "maxTextBytes": 262144
   },
   "auth": {
-    "//": "单账号、全权限。password 是明文；想避免明文就用 npm run hash-password 生成 passwordHash 并删掉 password。",
-    "username": "admin",
-    "password": "change-me",
+    "//": "这里只有策略，没有凭据。PIN 在**首次访问时于浏览器里设置**，存在数据库里，不在配置文件里。所以这一段可以整个删掉 —— 留着 username / password 会直接报错。",
     "sessionHours": 168,
     "loginRateLimit": {
       "windowSeconds": 300,

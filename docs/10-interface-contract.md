@@ -26,7 +26,7 @@ dataDir/                      ← 用户数据目录（容器里是数据卷）
 ## 1. 配置（`types/config.ts` + `backstage/lib/config.ts`）
 
 - `getConfig()` → `{ config, sandbox }`，按 mtime 自动重载。
-- `publicConfig()` → 可暴露给浏览器的子集（**不含密码、不含密码散列、不含配置路径之外的宿主信息**）。
+- `publicConfig()` → 可暴露给浏览器的子集（**不含 PIN 散列、不含 username、不含配置路径之外的宿主信息**）。
 - 配置不合法一律抛 `ConfigError`，**拒绝启动，不做默认值降级**。
 
 ## 2. 统一响应形状（`backstage/lib/http.ts`）
@@ -354,9 +354,11 @@ event: error    data: { code, error }
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/auth/login` | `{username,password}` → 设 cookie |
+| POST | `/api/auth/setup` | `{pin,confirmPin}` → 设 PIN 并发 cookie。**仅首次可用**，已设则 409 |
+| POST | `/api/auth/login` | `{pin}` → 设 cookie |
+| POST | `/api/auth/pin` | `{currentPin,pin,confirmPin}` → 换 PIN，**需登录**，换发 cookie |
 | POST | `/api/auth/logout` | 清 cookie |
-| GET | `/api/auth/session` | 当前会话 + `publicConfig()` |
+| GET | `/api/auth/session` | 当前会话 + `pin:{configured,length}` + `publicConfig()` |
 | GET | `/api/files` | `?path=&search=&sort=&order=` 列目录 |
 | PUT | `/api/files/upload` | `?path=dir/name.ext[&overwrite=1]`，**裸流** body |
 | GET | `/api/files/download` | `?path=` 流式下载（`Content-Disposition: attachment`） |

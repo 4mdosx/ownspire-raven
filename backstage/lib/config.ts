@@ -119,9 +119,11 @@ const configSchema = z.object({
     })
     .optional(),
   auth: z.object({
-    username: z.string().min(1),
-    password: z.string().min(1).optional(),
-    passwordHash: z.string().min(1).optional(),
+    // ⚠️ 这里**只有策略，没有凭据**。PIN 是首次登录时在浏览器里设置的，
+    // 存在 SQLite 里（backstage/services/pin.service.ts）。
+    // 配置文件里出现 username / password 的旧写法会被下面的
+    // 「遗留字段」检查明确报错，而不是被静默忽略 —— 静默忽略会让人
+    // 以为密码已经生效了。
     sessionHours: z.number().int().min(1).max(24 * 365).optional(),
     loginRateLimit: z
       .object({ windowSeconds: z.number().int().min(10).max(86_400), maxFailures: z.number().int().min(1).max(1000) })
@@ -198,6 +200,31 @@ function assertSingleSegment(name: string, label: string): void {
   if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..') {
     throw new ConfigError(`${label} 必须是单个路径段（字母数字点下划线短横），收到 "${name}"。`)
   }
+}
+
+/** 账号密码时代留下的字段。现在一律不认。 */
+const LEGACY_AUTH_FIELDS = ['username', 'password', 'passwordHash'] as const
+
+/**
+ * 配置文件里还写着账号密码时**明确报错**，而不是当它不存在。
+ *
+ * 理由：zod 的 `object()` 默认会**剥掉**未声明的字段，所以如果只靠 schema，
+ * 一份带 `auth.password` 的旧配置文件会静默通过 —— 服务照常起来，PIN 照常要求，
+ * 而配置里那个密码看起来「还在管用」。升级的人会以为登不进去是 bug，
+ * 实际上是配置早就被忽略了。
+ *
+ * 这里从原始 JSON（不是 zod 的产物）上查，所以剥字段这件事绕不过去。
+ */
+function assertNoLegacyAuthFields(auth: unknown, file: string): void {
+  if (auth === null || typeof auth !== 'object' || Array.isArray(auth)) return
+  const found = LEGACY_AUTH_FIELDS.filter((key) => key in (auth as Record<string, unknown>))
+  if (found.length === 0) return
+  throw new ConfigError(
+    `${file} 的 auth 里还有已废弃的字段：${found.join('、')}。\n` +
+      'raven 现在只用 PIN 登录，PIN 在**首次访问时于浏览器里设置**，存在数据库里，不在配置文件里。\n' +
+      '请把这几行删掉 —— 留着它们不会报错生效，只是让你以为密码还有效。\n' +
+      'auth 里现在只需要（都可以省略）：sessionHours、loginRateLimit。'
+  )
 }
 
 function expandHome(value: string): string {
@@ -278,6 +305,15 @@ export function stripJsonComments(text: string): string {
 }
 
 function buildConfig(file: string, raw: unknown): RavenConfig {
+  // ⚠️ 必须在 schema 校验**之前**查遗留字段：zod 的 `object()` 会把未声明的
+  // 字段剥掉，等校验完再查就永远查不到了。
+  assertNoLegacyAuthFields(
+    raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)['auth']
+      : undefined,
+    file
+  )
+
   const parsed = configSchema.safeParse(raw)
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -298,13 +334,6 @@ function buildConfig(file: string, raw: unknown): RavenConfig {
   assertSingleSegment(tempDir, 'scripts.tempDir')
   if (new Set([workspaceName, scriptsDir, tempDir]).size !== 3) {
     throw new ConfigError('workspace.name / workspace.scriptsDir / scripts.tempDir 必须是三个不同的目录名。')
-  }
-
-  if (!input.auth.password && !input.auth.passwordHash) {
-    throw new ConfigError('auth 必须提供 password 或 passwordHash 之一。')
-  }
-  if (input.auth.passwordHash && !/^scrypt\$/.test(input.auth.passwordHash)) {
-    throw new ConfigError('auth.passwordHash 必须是 `scrypt$...` 形式，用 `npm run hash-password` 生成。')
   }
 
   const quota = input.workspace?.quotaBytes === undefined ? null : input.workspace.quotaBytes
@@ -331,9 +360,6 @@ function buildConfig(file: string, raw: unknown): RavenConfig {
       maxTextBytes: input.clipboard?.maxTextBytes ?? 262_144,
     },
     auth: {
-      username: input.auth.username,
-      password: input.auth.password,
-      passwordHash: input.auth.passwordHash,
       sessionHours: input.auth.sessionHours ?? 24 * 7,
       loginRateLimit: input.auth.loginRateLimit ?? { windowSeconds: 300, maxFailures: 10 },
     },
@@ -435,6 +461,5 @@ export function publicConfig(): PublicConfig {
       sampleIntervalSeconds: config.services.sampleIntervalSeconds,
       count: config.services.defs.length,
     },
-    username: config.auth.username,
   }
 }

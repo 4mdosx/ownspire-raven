@@ -18,12 +18,22 @@ import { ConfigError } from '@/backstage/lib/config'
 export class ApiError extends Error {
   readonly code: string
   readonly status: number
+  /**
+   * 附加的机读数据，原样挂在失败信封的 `details` 上。
+   *
+   * 为什么需要它：登录要回传**字段级**错误（`{ pin: ['PIN 不正确'] }`），
+   * 让界面把提示放在对应输入框旁边，而不是只在卡片顶部显示一句汇总。
+   * ⚠️ 只能放机读数据，**不要把人话塞进来** —— `error` 那个字段才是给人看的，
+   * 两处都写同��句话的话，界面很容易在两处各显示一次。
+   */
+  readonly details?: Record<string, unknown>
 
-  constructor(code: string, message: string, status = 400) {
+  constructor(code: string, message: string, status = 400, details?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.details = details
   }
 }
 
@@ -31,8 +41,14 @@ export function ok<T extends Record<string, unknown>>(data: T, init?: ResponseIn
   return NextResponse.json({ ok: true, ...data }, init)
 }
 
-export function fail(code: string, error: string, status = 400): NextResponse {
-  return NextResponse.json({ ok: false, code, error }, { status })
+export function fail(
+  code: string,
+  error: string,
+  status = 400,
+  details?: Record<string, unknown>
+): NextResponse {
+  // details 没有就不写这个键：信封形状要稳定，前端才好判断。
+  return NextResponse.json({ ok: false, code, error, ...(details ? { details } : {}) }, { status })
 }
 
 export async function handle(work: () => Promise<NextResponse>): Promise<NextResponse> {
@@ -44,7 +60,7 @@ export async function handle(work: () => Promise<NextResponse>): Promise<NextRes
       return fail(sandbox.code, sandbox.message, sandbox.status)
     }
     if (error instanceof ApiError) {
-      return fail(error.code, error.message, error.status)
+      return fail(error.code, error.message, error.status, error.details)
     }
     if (error instanceof ConfigError) {
       return fail('config_error', error.message, 500)

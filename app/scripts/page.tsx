@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export default function ScriptsPage() {
   const config = publicConfig()
   return (
-    <RavenShell version={config.version} username={config.username} maxWidth="wide">
+    <RavenShell version={config.version} maxWidth="wide">
       <ScriptsRunner publicConfig={config} />
     </RavenShell>
   )

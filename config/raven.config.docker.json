@@ -9,8 +9,7 @@
     "scriptsDir": "scripts"
   },
   "auth": {
-    "username": "admin",
-    "password": "placeholder-only-for-build"
+    "//": "凭据不在配置里。容器首次启动后访问登录页会要求设置 PIN，那时它落进数据卷里的数据库。旧版本这里的 username / password 占位符已删除 —— 留着会让服务启动时直接报错。"
   },
   "services": {
     "registryFile": "services.json",
