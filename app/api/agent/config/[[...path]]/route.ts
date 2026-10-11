@@ -30,7 +30,7 @@ function agentPath(segments: string[] | undefined): string {
   return `/api/config/${segments.map((segment) => encodeURIComponent(segment)).join('/')}`
 }
 
-async function proxy(request: Request, context: Context, method: 'GET' | 'PUT' | 'DELETE'): Promise<NextResponse> {
+async function proxy(request: Request, context: Context, method: 'GET' | 'POST' | 'PUT' | 'DELETE'): Promise<NextResponse> {
   return handle(async () => {
     // 全权代理同理：先登录态,再转发（预算接口在这里一并覆盖 —— catch-all 天然带上）。
     await requireSessionFrom(request)
@@ -75,5 +75,17 @@ async function unsupported(): Promise<NextResponse> {
   })
 }
 
-export const POST = unsupported
+/**
+ * 配置目录的写操作是 PUT。POST 只放行连接检测
+ * （`providers/:id/probe`）：它不改目录，发一条最短对话。
+ * 其它 POST 仍是 405，避免把「用错动词」变成 agent 侧一句看不懂的 404。
+ */
+export async function POST(request: Request, context: Context): Promise<NextResponse> {
+  const { path } = await context.params
+  if (path?.length === 3 && path[0] === 'providers' && path[2] === 'probe') {
+    return proxy(request, context, 'POST')
+  }
+  return unsupported()
+}
+
 export const PATCH = unsupported

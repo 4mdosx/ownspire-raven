@@ -174,6 +174,12 @@ async function main(): Promise<void> {
     })
     check('PUT 建模型 → 200', makeModel.status === 200, makeModel.text.slice(0, 160))
 
+    const probe = await call(POST, `/api/config/providers/${PROVIDER}/probe`, {
+      init: { method: 'POST', body: JSON.stringify({}) },
+    })
+    check('POST 检测被转发且连不上也是 200', probe.status === 200 && probe.json['reached'] === false, `${probe.status} ${probe.text.slice(0, 180)}`)
+    check('⚠️ 检测响应里搜不到 "apiKey"，也没有明文 key', !probe.text.includes('"apiKey"') && !probe.text.includes('sk-bff-verify-7777'))
+
     // ---- 级联：query string 必须转发 ----
     const noCascade = await call(DELETE, `/api/config/providers/${PROVIDER}`)
     check('DELETE 不带 cascade → 409', noCascade.status === 409, `${noCascade.status} ${noCascade.text.slice(0, 160)}`)

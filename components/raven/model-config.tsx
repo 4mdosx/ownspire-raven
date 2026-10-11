@@ -5,7 +5,7 @@ import { Button, Spinner } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
 import { ErrorBar, StatusPill, useToast } from '@/components/raven/feedback'
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 /**
@@ -26,6 +26,9 @@ import { cn } from '@/lib/utils'
  * ② **级联删除必须确认，且要说清连带删了什么。** 界面不显示「还有 2 个模型」，
  *    用户点下去之后才发现模型没了 —— 那比不给删除功能更糟。
  * ③ **失败时保留用户输入。** 写操作失败后表单内容还在，重试不用重打一遍 key。
+ * ④ **写入一律 PUT。** 配置目录的增改不接受 POST / PATCH，用错动词会得到
+ *    「只支持 GET / PUT / DELETE」，而 key 一个字都没写进去。
+ *    连接检测是例外：`POST .../providers/:id/probe`，它不改目录。
  *
  * ⚠️ **2026-10-09：key 的环境变量名那一栏删了。** 服务端不再有 env 兜底，
  * 所以「填个变量名」在这里是一个**填了也不会生效**的输入框 ——
@@ -177,7 +180,7 @@ export function ModelConfig({ agentConfigured }: { agentConfigured: boolean }) {
         busy={busy}
         onSave={(id, patch) =>
           run(
-            () => apiPatch(`/api/agent/config/providers/${encodeURIComponent(id)}`, patch).then(() => undefined),
+            () => apiPut(`/api/agent/config/providers/${encodeURIComponent(id)}`, patch).then(() => undefined),
             '厂商已保存。'
           )
         }
@@ -198,7 +201,7 @@ export function ModelConfig({ agentConfigured }: { agentConfigured: boolean }) {
         busy={busy}
         onSave={(id, patch) =>
           run(
-            () => apiPatch(`/api/agent/config/endpoints/${encodeURIComponent(id)}`, patch).then(() => undefined),
+            () => apiPut(`/api/agent/config/endpoints/${encodeURIComponent(id)}`, patch).then(() => undefined),
             '端点已保存。'
           )
         }
@@ -219,7 +222,7 @@ export function ModelConfig({ agentConfigured }: { agentConfigured: boolean }) {
         busy={busy}
         onSave={(model) =>
           run(
-            () => apiPost('/api/agent/config/models', model).then(() => undefined),
+            () => apiPut('/api/agent/config/models', model).then(() => undefined),
             '模型已保存。'
           )
         }
@@ -338,6 +341,32 @@ function ProviderRow({
   // ⚠️ key 输入框**故意不预填**：服务端不会回显它，预填一个掩码进去，
   // 用户会以为那就是完整的 key，然后一保存就把真 key 换成 ****1234。
   const [apiKey, setApiKey] = useState('')
+  const [probing, setProbing] = useState(false)
+  const [probe, setProbe] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  const canProbe = !busy && !probing && (provider.apiKeySet || apiKey.trim() !== '')
+
+  async function runProbe(): Promise<void> {
+    setProbing(true)
+    setProbe(null)
+    try {
+      const result = await apiPost<ProbeResult>(
+        `/api/agent/config/providers/${encodeURIComponent(provider.id)}/probe`,
+        apiKey.trim() === '' ? {} : { apiKey }
+      )
+      const where = `${result.modelId} · ${result.endpointId} · ${result.baseUrl}`
+      if (result.reply && !result.error) {
+        setProbe({ tone: 'ok', text: `${where}\n${result.reply}` })
+      } else {
+        const detail = [result.error, result.hint].filter((line) => line).join('\n')
+        setProbe({ tone: 'error', text: `${where}\n${detail || '厂商没有返回说明。'}` })
+      }
+    } catch (cause) {
+      setProbe({ tone: 'error', text: cause instanceof Error ? cause.message : String(cause) })
+    } finally {
+      setProbing(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -395,6 +424,9 @@ function ProviderRow({
             onChange={(event) => setApiKey(event.target.value)}
             className="font-mono"
           />
+          <Button size="sm" variant="outline" disabled={!canProbe} loading={probing} onClick={() => void runProbe()}>
+            检测
+          </Button>
           {provider.apiKeySet && (
             <Button
               size="sm"
@@ -408,8 +440,28 @@ function ProviderRow({
           )}
         </div>
       </Field>
+      {probe && (
+        <p
+          className={cn(
+            'whitespace-pre-wrap font-mono text-xs',
+            probe.tone === 'ok' ? 'text-foreground' : 'text-destructive'
+          )}
+        >
+          {probe.text}
+        </p>
+      )}
     </div>
   )
+}
+
+type ProbeResult = {
+  reached: boolean
+  endpointId: string
+  modelId: string
+  baseUrl: string
+  reply: string | null
+  error: string | null
+  hint: string | null
 }
 
 // ---------------------------------------------------------------------------
