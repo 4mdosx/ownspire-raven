@@ -1,4 +1,5 @@
 import { publicConfig } from '@/backstage/lib/config'
+import { AgentBudget } from '@/components/raven/agent-budget'
 import { AgentChat } from '@/components/raven/agent-chat'
 import { RavenShell } from '@/components/raven/shell'
 
@@ -15,7 +16,10 @@ export default function AgentPage() {
   const config = publicConfig()
   return (
     <RavenShell version={config.version} maxWidth="wide">
-      <AgentChat />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <AgentBudget />
+        <AgentChat />
+      </div>
     </RavenShell>
   )
 }

@@ -142,10 +142,8 @@ export function createAgentSession(
     title?: string
     instructions?: string
     tools?: string[]
-    /** 2026-10-09 契约加法:引擎与固定端点/模型、双审批开关。原样透传。 */
+    /** 引擎与双审批开关。模型名是 little-one 的部署参数，不进会话。 */
     engine?: 'little-one' | 'claude'
-    endpointId?: string
-    modelId?: string
     sandboxApproval?: boolean
     businessApproval?: boolean
   },

@@ -12,7 +12,7 @@ import { apiGet, apiPut, ApiClientError } from '@/lib/api'
  * 按厂商/模型分组的账目一眼看清谁在烧，「换算成人民币」这件事刻意留在库外。
  *
  * 预算上限是实例级一个数；检查点在 run 启动前 —— 超了发消息会拿到
- * 409 `budget_exhausted`，UI 据此提示来这页调整。
+ * 409 `budget_exhausted`，在这张卡片上调整。
  */
 
 type Usage = {

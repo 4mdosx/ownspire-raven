@@ -33,8 +33,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         // 2026-10-09 契约加法（§三）:逐字段类型检查后透传,不整包转发 ——
         // 未知字段由 agent 侧的「缺失用默认」纪律兜底。
         ...(body.engine === 'little-one' || body.engine === 'claude' ? { engine: body.engine } : {}),
-        ...(typeof body.endpointId === 'string' && body.endpointId !== '' ? { endpointId: body.endpointId } : {}),
-        ...(typeof body.modelId === 'string' && body.modelId !== '' ? { modelId: body.modelId } : {}),
         ...(typeof body.sandboxApproval === 'boolean' ? { sandboxApproval: body.sandboxApproval } : {}),
         ...(typeof body.businessApproval === 'boolean' ? { businessApproval: body.businessApproval } : {}),
       })

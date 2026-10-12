@@ -4,18 +4,8 @@ import { agentFetch } from '@/backstage/services/agent.service'
 import { requireSessionFrom } from '@/backstage/services/auth.service'
 
 /**
- * 配置目录的转发（agent 契约 §三「配置目录」）。
- *
- * **一个 catch-all 处理全部动词与路径**，而不是为每条路径写一个 route。
- * 理由：这里要做的事只有一件 —— **把请求原样送到 agent 的 `/api/config/*`，
- * 把响应原样送回**。为每条路径写一个文件的话，N 条路径就有 N 处
- * 「忘了带 query string」「忘了转发 body」的机会，而它们的表现是
- * 「界面上某个按钮不管用」，极难定位到转发层。
- *
- * ⚠️ **绝不加工**：agent 侧的 `code` 与 `error` 直接透传
- * （理由与 `agentFetch` 相同：前端按 code 分支，这里再翻译一次就多一处会漂移）。
- * 尤其 `409 cascade_required` 必须原样到达 —— 前端靠它弹确认框，
- * 改写成 500 就变成「让人重试一个必然失败的请求」。
+ * 配置转发。现在只剩预算：`GET /api/config` 与 `PUT /api/config/budget`。
+ * 模型目录已经不在 little-one 里，打到旧路径会原样得到 404。
  */
 
 export const dynamic = 'force-dynamic'
@@ -75,16 +65,8 @@ async function unsupported(): Promise<NextResponse> {
   })
 }
 
-/**
- * 配置目录的写操作是 PUT。POST 只放行连接检测
- * （`providers/:id/probe`）：它不改目录，发一条最短对话。
- * 其它 POST 仍是 405，避免把「用错动词」变成 agent 侧一句看不懂的 404。
- */
-export async function POST(request: Request, context: Context): Promise<NextResponse> {
-  const { path } = await context.params
-  if (path?.length === 3 && path[0] === 'providers' && path[2] === 'probe') {
-    return proxy(request, context, 'POST')
-  }
+/** 预算用 PUT。POST 一律 405。 */
+export async function POST(): Promise<NextResponse> {
   return unsupported()
 }
 

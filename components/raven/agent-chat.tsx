@@ -99,9 +99,6 @@ export function AgentChat() {
   const [aborted, setAborted] = useState<string | null>(null)
   // ---- 2026-10-09 契约新增面：引擎、双审批开关、取消、断线重连 ----
   const [newEngine, setNewEngine] = useState<'little-one' | 'claude'>('little-one')
-  /** 可选模型（来自 agent 的配置目录）。null = 还没拉到（发消息时走 agent 默认）。 */
-  const [models, setModels] = useState<{ id: string; label: string }[] | null>(null)
-  const [selectedModel, setSelectedModel] = useState<string>('')
   const [newSandboxApproval, setNewSandboxApproval] = useState(false)
   const [newBusinessApproval, setNewBusinessApproval] = useState(true)
   /** 当前会话在途的 run（断线重连与取消都指向它）。 */
@@ -141,26 +138,6 @@ export function AgentChat() {
     void refreshSessions()
   }, [refreshSessions])
 
-  // 模型清单:给会话挑模型用（agent 契约 §三 /api/models + 配置目录的 default）。
-  // 拉不到不阻断 —— 发消息仍走 agent 的默认模型（可用优先）。
-  useEffect(() => {
-    const controller = new AbortController()
-    void (async () => {
-      try {
-        const body = await apiGet<{ models: { id: string; label: string }[]; default: string | null }>(
-          '/api/agent/models',
-          {},
-          { signal: controller.signal }
-        )
-        setModels(body.models)
-        setSelectedModel(body.default ?? body.models[0]?.id ?? '')
-      } catch {
-        if (!controller.signal.aborted) setModels(null)
-      }
-    })()
-    return () => controller.abort()
-  }, [])
-
   const openSession = useCallback(async (id: string): Promise<void> => {
     try {
       const body = await apiGet<SessionDetail>(`/api/agent/sessions/${id}`)
@@ -189,8 +166,6 @@ export function AgentChat() {
         engine: newEngine,
         sandboxApproval: newSandboxApproval,
         businessApproval: newBusinessApproval,
-        // 会话固定模型:不传 = agent 的默认（可用优先）。空模型清单时也不传。
-        ...(selectedModel !== '' ? { modelId: selectedModel } : {}),
       })
       setSessionId(body.sessionId)
       setMessages([])
@@ -202,7 +177,7 @@ export function AgentChat() {
       toast.error('新建会话失败。', describeClient(error))
       return null
     }
-  }, [newBusinessApproval, newEngine, newSandboxApproval, refreshSessions, selectedModel, toast])
+  }, [newBusinessApproval, newEngine, newSandboxApproval, refreshSessions, toast])
 
   const removeSession = useCallback(
     async (id: string): Promise<void> => {
@@ -499,26 +474,6 @@ export function AgentChat() {
               >
                 <option value="little-one">little-one（轻量调度）</option>
                 <option value="claude">claude（脱手长任务）</option>
-              </select>
-            </label>
-            <label className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">模型</span>
-              <select
-                value={selectedModel}
-                onChange={(event) => setSelectedModel(event.target.value)}
-                className="h-7 max-w-[9.5rem] rounded border bg-background px-1.5 text-xs"
-              >
-                {models === null ? (
-                  <option value="">（用默认）</option>
-                ) : models.length === 0 ? (
-                  <option value="">（agent 没配模型）</option>
-                ) : (
-                  models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))
-                )}
               </select>
             </label>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">

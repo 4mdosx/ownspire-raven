@@ -1,5 +1,5 @@
 /**
- * BFF 转发层的验证（agent 契约 §三「配置目录」）。
+ * BFF 转发层的验证：预算透传，模型目录接口是 404。
  *
  * ## 为什么直接打 route handler 而不走 HTTP
  *
@@ -102,120 +102,37 @@ async function call(
 }
 
 async function main(): Promise<void> {
-  console.log('\n[BFF · 配置目录转发]')
+  console.log('\n[BFF · 预算转发]')
 
-  // ⚠️ route 模块在 env 就位之后才加载（见文件头）。
-  const { DELETE, GET, POST, PUT } = await import('../app/api/agent/config/[[...path]]/route')
+  const { GET, POST, PUT } = await import('../app/api/agent/config/[[...path]]/route')
 
-  // 临时库里设一次 PIN → 签发登录 cookie。BFF 现在每条路由都校验登录态
-  //（2026-10-09 审计裁定:全权代理不能挂在无鉴权端口上）,脚本扮演已登录浏览器。
   const { savePin } = await import('../backstage/services/pin.service')
   const { createSessionToken, SESSION_COOKIE } = await import('../backstage/services/auth.service')
   await savePin('0000')
   AUTH_COOKIE = `${SESSION_COOKIE}=${await createSessionToken()}`
 
-  // ⚠️ **用一次性厂商，不要动 seed 里的deepseek。**
-  // 早先这个脚本直接删 deepseek，于是它自我毁坏：第一次跑把端点删了，
-  // 第二次跑就没有「下级」可拒，409 那条断言静默变成 200 ——
-  // 而「测试跑第二遍开始就不准」这件事，往往要等到某天它掩盖了一个真 bug 才被发现。
-  const PROVIDER = 'bff-verify-tmp'
-
-  // ---- 读 ----
   const read = await call(GET, '/api/config')
   check('GET 透传 → 200', read.status === 200, read.status)
-  // ⚠️ raven 的 envelope 是**扁平**的：`ok()` 把 agent 的返回直接摊到顶层
-  // （`{ ok: true, providers, endpoints, models }`），**没有 data 层**。
-  // 按「常见惯例」去读 `json.data` 会拿到 undefined，
-  // 而症状是「三段都没回来」—— 指向一个根本不存在的层级问题。
-  check(
-    '三段都回来了（在顶层，不在 data 里）',
-    Array.isArray(read.json['providers']) &&
-      Array.isArray(read.json['endpoints']) &&
-      Array.isArray(read.json['models']),
-    Object.keys(read.json)
-  )
-  check('⚠️ 响应里搜不到 "apiKey" 键', !read.text.includes('"apiKey"'))
-  check('脱敏字段确实在（apiKeySource / apiKeySet）', read.text.includes('apiKeySource'))
-  // ⚠️ keyEnvVar 已从契约里删掉（2026-10-09，key 只从库里来）。
-  // 这条断言守着 BFF **不做字段增补** —— 它只转发，不加工。
-  // 万一哪天有人在 envelope 里补了个 keyEnvVar，界面就会显示一个填了不生效的输入框。
-  check('响应里没有 keyEnvVar（BFF 不补字段，只转发）', !read.text.includes('keyEnvVar'))
+  const budget = read.json['budget'] as { limit?: unknown } | undefined
+  check('顶层是预算，没有厂商目录', budget !== undefined && !('providers' in read.json), Object.keys(read.json))
+  check('响应里搜不到 apiKey', !read.text.includes('apiKey'))
 
+  const previous = budget?.limit ?? null
   try {
-    // ---- 建厂商 + 端点 + 模型（给删除准备「下级」）----
-    const makeProvider = await call(PUT, `/api/config/providers/${PROVIDER}`, {
-      init: {
-        method: 'PUT',
-        body: JSON.stringify({
-          label: 'BFF 验证用',
-          defaultProtocol: 'openai-chat-completions',
-          apiKey: 'sk-bff-verify-7777',
-        }),
-      },
+    const put = await call(PUT, '/api/config/budget', {
+      init: { method: 'PUT', body: JSON.stringify({ limit: 1000 }) },
     })
-    check('PUT 建厂商 → 200', makeProvider.status === 200, `${makeProvider.status} ${makeProvider.text.slice(0, 160)}`)
-    check('⚠️ 写接口的响应里也搜不到 "apiKey"', !makeProvider.text.includes('"apiKey"'))
-    check('回执带掩码（说明 key 真写进去了）', makeProvider.text.includes('****7777'), makeProvider.text.slice(0, 200))
-    check('来源标成 db（body 确实到了 agent 而不是被丢掉）', makeProvider.text.includes('"apiKeySource":"db"'))
-
-    const makeEndpoint = await call(PUT, `/api/config/endpoints/${PROVIDER}-chat`, {
-      init: {
-        method: 'PUT',
-        body: JSON.stringify({ providerId: PROVIDER, label: '验证端点', baseUrl: 'https://example.invalid/v1' }),
-      },
+    check('PUT 预算 → 200', put.status === 200, put.text.slice(0, 160))
+    const gone = await call(PUT, '/api/config/providers/zhipu', {
+      init: { method: 'PUT', body: JSON.stringify({ label: '智谱' }) },
     })
-    check('PUT 建端点 → 200', makeEndpoint.status === 200, makeEndpoint.text.slice(0, 160))
-
-    const makeModel = await call(PUT, '/api/config/models', {
-      init: {
-        method: 'PUT',
-        body: JSON.stringify({ id: 'bff-verify-model', endpointId: `${PROVIDER}-chat`, label: '验证模型' }),
-      },
-    })
-    check('PUT 建模型 → 200', makeModel.status === 200, makeModel.text.slice(0, 160))
-
-    const probe = await call(POST, `/api/config/providers/${PROVIDER}/probe`, {
-      init: { method: 'POST', body: JSON.stringify({}) },
-    })
-    check('POST 检测被转发且连不上也是 200', probe.status === 200 && probe.json['reached'] === false, `${probe.status} ${probe.text.slice(0, 180)}`)
-    check('⚠️ 检测响应里搜不到 "apiKey"，也没有明文 key', !probe.text.includes('"apiKey"') && !probe.text.includes('sk-bff-verify-7777'))
-
-    // ---- 级联：query string 必须转发 ----
-    const noCascade = await call(DELETE, `/api/config/providers/${PROVIDER}`)
-    check('DELETE 不带 cascade → 409', noCascade.status === 409, `${noCascade.status} ${noCascade.text.slice(0, 160)}`)
-    check('code 如实透传（前端靠它弹确认框）', noCascade.json['code'] === 'cascade_required', noCascade.json)
-
-    // ---- 400 与 405 ----
-    const bad = await call(PUT, '/api/config/models', {
-      init: {
-        method: 'PUT',
-        body: JSON.stringify({ id: 'x', endpointId: `${PROVIDER}-chat`, reasoningEffort: 'ludicrous' }),
-      },
-    })
-    check('参数不合法 → 400（不是 500）', bad.status === 400, `${bad.status} ${bad.text.slice(0, 160)}`)
-    check('agent 的原话透传（不在这里二次翻译）', bad.text.includes('low / high / max'), bad.text.slice(0, 200))
-
+    check('PUT 厂商 → 404', gone.status === 404, gone.status)
     const wrongMethod = await call(POST, '/api/config', { init: { method: 'POST' } })
-    check('不支持的动词 → 405 而不是 Next 的默认页', wrongMethod.status === 405, wrongMethod.status)
-
-    // ---- 删不存在的 ----
-    const missing = await call(DELETE, '/api/config/providers/nope', { query: 'cascade=1' })
-    check('删不存在的 → 404', missing.status === 404, `${missing.status} ${missing.text.slice(0, 120)}`)
-
-    // ---- query string 转发（放在最后：它会真删东西）----
-    const cascade = await call(DELETE, `/api/config/providers/${PROVIDER}`, { query: 'cascade=1' })
-    check('⚠️ query string 转发 → 带 cascade 就成功', cascade.status === 200, `${cascade.status} ${cascade.text.slice(0, 160)}`)
-    check('回执报清连带删了什么', cascade.text.includes('removedEndpoints') && cascade.text.includes('removedModels'), cascade.text.slice(0, 200))
-
-    const after = await call(GET, '/api/config')
-    check(
-      '⚠️ 没留下孤儿（厂商、端点、模型都不在了）',
-      !after.text.includes(PROVIDER) && !after.text.includes('bff-verify-model'),
-      after.text.slice(0, 200)
-    )
+    check('POST /api/config → 405', wrongMethod.status === 405, wrongMethod.status)
   } finally {
-    // 兜底清理：断言失败时也要把临时厂商删掉，否则下次跑会被上一轮的残留影响。
-    await call(DELETE, `/api/config/providers/${PROVIDER}`, { query: 'cascade=1' })
+    await call(PUT, '/api/config/budget', {
+      init: { method: 'PUT', body: JSON.stringify({ limit: previous }) },
+    })
   }
 
   console.log('')
