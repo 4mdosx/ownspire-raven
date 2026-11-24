@@ -20,12 +20,18 @@ docker logs workbench | tail   # 取首次访问 URL(带 token)
 ```
 宿主 macOS
 └── docker compose
-    └── workbench 容器(node:24-slim,锁版本 @deepseek-ai/dsh)
+    └── workbench 容器(node:26-slim,锁版本 @deepseek-ai/dsh)
         ├── HOME=/data/dsh        → dsh 配置 / 凭据 / 会话轨迹(~/.dsh)
         ├── WORKDIR=/data/workspace → agent 默认工作区
         └── dsh web 绑容器自身 IP:3080(dsh 拒绝绑 0.0.0.0,见下)
 宿主挂载 ./data/ ← 以上两个目录;容器销毁重建,数据原样保留
 ```
+
+**镜像内置开发工具**(slim 基础上加装,agent 工作环境即开即用):
+`git` / `bash` / `curl` / `wget` / `openssh-client`(git 走 SSH)/
+`build-essential` + `python3`(原生模块编译)/ `jq` / `ripgrep` / `fd` /
+`tree` / `unzip` / `zip` / `less` / `procps` / `sqlite3` / `socat`(兜底转发)。
+缺 git 会导致 UI 无法创建工作空间,所以基础工具链是硬依赖。
 
 **两个实测到的安全事实**(2026-11-24,dsh 0.2.2-rc.5):
 
