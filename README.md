@@ -41,6 +41,45 @@ docker logs workbench | tail   # 取首次访问 URL(带 token)
 改 compose/Dockerfile 里的版本号重新 build;升级前备份 `data/dsh/`
 (会话轨迹是 append-only 事件流,是后续工厂审计的地基,丢了不可再生)。
 
+## 第三方网关接入(Magpie 等 token 网关)
+
+dsh 原生支持 OpenAI 兼容网关(模型层是插件,provider 可自由添加),这也是
+DESIGN.md D6 模型路由的实现落点。两条路径:
+
+**路径 A:UI 配置(推荐,落盘在 `data/dsh/`,天然持久)**
+
+设置 → 模型 → 添加模型提供商 → 自定义模型 API。四个必填:
+Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL、
+协议、模型 ID。
+
+**路径 B:配置文件 `data/dsh/.dsh/profiles/web/cordis.patch.yml`**
+
+```yaml
+- id: llm-pi-ai
+  config:
+    providers:
+      magpie:                      # 自定义 provider id
+        api: openai-completions
+        baseURL: https://<网关地址>/v1
+        apiKeyEnv: GATEWAY_API_KEY # 走环境变量,不写死在配置里
+        models:
+          - id: deepseek-flash
+          - id: deepseek-v4-pro
+```
+
+环境变量经 compose `environment:` 注入容器即可。
+
+**避坑(均来自官方文档与社区实测)**
+
+- Base URL 填网关文档的根(通常以 `/v1` 结尾),**别拼 `/chat/completions`**——
+  dsh 自己补路径,拼两层是最常见 404
+- 网关不提供 `GET /models` 时,Fetch models 报 401/404 属正常,手动填模型 ID
+- 一个 provider 只能一种协议;网关同时有 OpenAI 与 Anthropic 风格就建两个 provider
+- 第三方网关不识别 `developer` 角色或 `max_completion_tokens` 时,在
+  cordis.patch.yml 同层加 `compat: { supportsDeveloperRole: false, maxTokensField: max_tokens }`
+  (这类兼容性配置不在 UI 表单里)
+- 改 patch 前可用 `dsh --profile web --dump-config` 打印整棵插件树核对
+
 ## 目录
 
 | 路径 | 说明 |
