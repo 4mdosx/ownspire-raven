@@ -1,9 +1,10 @@
 ARG NODE_TAG=24-slim
 FROM node:${NODE_TAG}
 
-# socat 仅作 dsh 不支持 --host 时的兜底转发
+# socat 仅作 dsh 不支持 --host 时的兜底转发;git/bash 是 agent 工具链必需,
+# 缺 git 会导致 UI 创建工作空间失败(slim 镜像默认不带)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends socat \
+    && apt-get install -y --no-install-recommends socat git bash curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 锁版本:developer preview 期破坏性变更多,不追 latest(DESIGN.md R1)
