@@ -90,6 +90,15 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
 | `.env.example` | `DEEPSEEK_API_KEY` 占位 |
 | `data/` | 运行时数据(gitignore),宿主持有 |
 
+**容器部署的已知边界**(2026-11-24 实测):
+
+- UI 的「打开配置文件」按钮在容器里**不可用**——它调系统编辑器
+  (`open`/`xdg-open`),容器里没有。配置文件直接在宿主编:
+  `data/dsh/.dsh/profiles/web/cordis.patch.yml`,改完 `docker compose restart`
+- 容器重启后访问 token 会变,重新 `docker logs workbench | tail` 取新 URL
+- 镜像已内置 `git`/`bash`/`curl`:slim 镜像默认不带 git,缺它会导致
+  UI「无法创建默认工作空间」
+
 ## 升级与风险
 
 - dsh 处于 developer preview,官方明示会有破坏性变更 → **版本锁死在
