@@ -1,0 +1,20 @@
+services:
+  workbench:
+    build:
+      context: .
+      args:
+        DSH_VERSION: "0.2.2-rc.5"
+    image: ownspire/workbench:0.2.2-rc.5
+    container_name: workbench
+    ports:
+      # 只绑宿主回环:单用户本地部署的隐私边界;远程访问走 SSH 隧道或 Tailscale,
+      # 改成 "3080:3080" 即暴露到局域网(不建议)
+      - "127.0.0.1:3080:3080"
+    env_file:
+      # 可选:不建 .env 也能启动,密钥走 Web UI 设置页
+      - path: .env
+        required: false
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/workspace:/data/workspace
+    restart: unless-stopped
