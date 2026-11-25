@@ -34,7 +34,36 @@ DATA_DIR=/opt/workbench-data        # 绝对路径
 不变,所以改 `DATA_DIR` 不需要改镜像或 entrypoint。
 
 注意：改 `DATA_DIR` 等于指向一个新的空数据目录,旧数据不会自动搬迁。
-迁移时先把旧目录的两个子目录拷到新目录,再 `docker compose up -d`。
+用下面的 `migrate.sh` 过滤打包后恢复,或直接把旧目录的两个子目录拷到新目录,
+再 `docker compose up -d`。
+
+## 迁移到另一台电脑
+
+`migrate.sh` 负责过滤并打包 `${DATA_DIR}`,默认从 `.env` 读取该变量：
+
+```bash
+./migrate.sh export --dry-run                  # 先看会打包什么
+./migrate.sh export -o dsh-migration.tar.gz    # 生成归档(含校验和)
+# 拷到新电脑后：
+./migrate.sh inspect dsh-migration.tar.gz      # 查看摘要,不落地 payload
+./migrate.sh import dsh-migration.tar.gz -d /path/to/new-data
+# .env 里写 DATA_DIR=/path/to/new-data,再 docker compose up -d --build
+```
+
+默认保留 `dsh/.dsh/sessions`(会话事件流)、`profiles` 配置、`attachments`、
+`storages/workspace.json`、自定义预设和 `workspace/`；剔除 npm/pnpm 缓存、
+`node_modules`、`.DS_Store`、`*.log`、`*.bak/*.fixed/*.tmp`、`session.lock`。
+默认**不打包**鉴权壳的 `auth-password`/`auth-secret`(新机器重新生成密码,
+旧浏览器 Cookie 失效)和 `session_projcache`(避免旧预设 id 污染投影)；
+确实需要时用 `--include-secrets` / `--include-projcache` 打开。
+
+归档含 `manifest.json`、`SHA256SUMS`(导入前自动校验)和 `RESTORE.txt`。
+注意 `dsh/.dsh/.credentials.yaml` 里有模型 API key 与浏览器会话 secret,
+**归档等同密码文件**,请加密保存,不要发到公开渠道。
+
+`import` 默认拒绝覆盖已有数据；确认要合并到已有目录时加 `--force`,
+它只覆盖同名文件、不删除目标已有文件。另有 `--exclude GLOB` 追加过滤规则,
+`-n/--dry-run` 空跑。
 
 ## 局域网访问与鉴权
 
@@ -182,28 +211,15 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
 | `docker-entrypoint.sh` | 生成/恢复凭据、启动 dsh(127.0.0.1:3081)并抓 token、拉起鉴权壳 |
 | `.env.example` | `DATA_DIR`、端口、登录凭据、dsh 对外地址等占位 |
 | `.env` | 本地环境变量(不入库),见「自定义数据目录」「局域网访问与鉴权」 |
+| `migrate.sh` | 过滤打包 / 校验恢复 `DATA_DIR`,见「迁移到另一台电脑」 |
 | `data/` | 默认运行时数据目录(gitignore),宿主持有 |
-
-**容器部署的已知边界**(2026-11-24 实测):
-
-- UI 的「打开配置文件」按钮在容器里**不可用**——它调系统编辑器
-  (`open`/`xdg-open`),容器里没有。配置文件直接在宿主编:
-  `${DATA_DIR}/dsh/.dsh/profiles/web/cordis.patch.yml`(默认 `data/dsh/...`),
-  改完 `docker compose restart`
-- 容器重启后 dsh token 会变,但鉴权壳会自动抓取注入,登录地址不变;
-  只有需要直连 dsh 调试时才去 `docker logs workbench | tail` 取 token
-- 镜像已内置 `git`/`bash`/`curl`:完整 `node:26` 自带 git,Dockerfile
-  里仍显式安装以保证工具齐全;缺 git 会导致 UI「无法创建默认工作空间」
-- 偶发「新建会话失败:dsh-scope: scope key is already bound to a parent」:
-  dsh 0.2.2-rc.5 在复用预设不一致的空白会话时可能留下进程内旧绑定。
-  `docker compose restart workbench` 即可清掉(不丢数据),再新建一次会把该空白会话
-  的预设更新为当前默认值;若反复出现,删掉那个旧空白会话
 
 ## 升级与风险
 
 - dsh 处于 developer preview,官方明示会有破坏性变更 → **版本锁死在
   Dockerfile,不追 latest**;升级前跑通一次冒烟(启动 + 发一条消息 + 会话可恢复)
-- 会话轨迹、凭据都在 `${DATA_DIR}/dsh/`(默认 `./data/dsh/`);整机迁移 = 拷走这一个目录
+- 会话轨迹、凭据都在 `${DATA_DIR}/dsh/`(默认 `./data/dsh/`);整机迁移 =
+  拷走这两个子目录,或用 `migrate.sh` 过滤打包后恢复
 - 插件启用前人工审核(DESIGN.md R2),一期默认不装任何社区插件
 
 ## 阶段一验收(DESIGN.md)
