@@ -1,20 +1,84 @@
 #!/bin/sh
 set -e
 
-mkdir -p "$HOME" /data/workspace
+HOME_DIR="${HOME:-/data/dsh}"
+mkdir -p "$HOME_DIR" /data/workspace /run
 cd /data/workspace
 
-# dsh 拒绝绑 0.0.0.0(官方安全策略,防 RCE 暴露),只接受具体地址。
-# 容器端口映射的 DNAT 流量目的地址就是容器自身 IP,绑它即可:
-HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+# ---------- 鉴权凭据(首次启动自动生成并持久化) ----------
+AUTH_USER="${AUTH_USER:-workbench}"
+export AUTH_USER
 
-if [ -n "$HOST_IP" ]; then
-    echo "[entrypoint] dsh web 绑定容器地址 ${HOST_IP}:3080"
-    exec dsh web --no-open --host "$HOST_IP" --port 3080
-else
-    # 兜底:dsh 绑 127.0.0.1,socat 把 0.0.0.0:3081 转发到 127.0.0.1:3080
-    # (宿主侧端口映射需改用 3081)
-    echo "[entrypoint] 未能探测容器 IP,启用 socat 转发(宿主端口改用 3081)" >&2
-    socat TCP-LISTEN:3081,fork,reuseaddr TCP:127.0.0.1:3080 &
-    exec dsh web --no-open
+SECRET_FILE="$HOME_DIR/auth-secret"
+if [ -z "${AUTH_SECRET:-}" ]; then
+    if [ -s "$SECRET_FILE" ]; then
+        AUTH_SECRET=$(cat "$SECRET_FILE")
+    else
+        AUTH_SECRET=$(openssl rand -hex 32)
+        printf '%s\n' "$AUTH_SECRET" > "$SECRET_FILE"
+        chmod 600 "$SECRET_FILE"
+    fi
 fi
+export AUTH_SECRET
+
+PASSWORD_FILE="$HOME_DIR/auth-password"
+if [ -z "${AUTH_PASSWORD:-}" ]; then
+    if [ -s "$PASSWORD_FILE" ]; then
+        AUTH_PASSWORD=$(cat "$PASSWORD_FILE")
+    else
+        AUTH_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')
+        printf '%s\n' "$AUTH_PASSWORD" > "$PASSWORD_FILE"
+        chmod 600 "$PASSWORD_FILE"
+        echo "[entrypoint] 已生成随机登录密码: $AUTH_PASSWORD (用户名: $AUTH_USER)"
+        echo "[entrypoint] 密码同时保存在 $PASSWORD_FILE"
+    fi
+fi
+export AUTH_PASSWORD
+
+# ---------- dsh:只监听容器内 127,由鉴权壳代理 ----------
+DSH_ARGS="--no-open --host 127.0.0.1 --port 3081"
+if [ -n "${DSH_PUBLIC_URL:-}" ]; then
+    DSH_ARGS="$DSH_ARGS --public-url $DSH_PUBLIC_URL"
+fi
+DSH_TRUST="127.0.0.1:3081"
+if [ -n "${DSH_TRUSTED_HOST:-}" ]; then
+    DSH_TRUST="$DSH_TRUST $DSH_TRUSTED_HOST"
+fi
+DSH_ARGS="$DSH_ARGS --trusted-host $DSH_TRUST"
+
+# dsh 把带 token 的访问地址打到 stdout,这里抓出来给鉴权壳自动注入
+rm -f /run/dshlog /run/dsh-token
+mkfifo /run/dshlog
+dsh web $DSH_ARGS > /run/dshlog 2>&1 &
+DSPID=$!
+
+(
+    while IFS= read -r line; do
+        printf '%s\n' "$line"
+        case "$line" in
+            *'?token='*)
+                tok=$(printf '%s\n' "$line" | sed -n 's/.*[?&]token=\([^[:space:]]*\).*/\1/p')
+                if [ -n "$tok" ]; then
+                    printf '%s' "$tok" > /run/dsh-token
+                fi
+                ;;
+        esac
+    done < /run/dshlog
+) &
+LOGPID=$!
+
+i=0
+while [ ! -s /run/dsh-token ] && [ "$i" -lt 60 ]; do
+    sleep 1
+    i=$((i + 1))
+done
+if [ ! -s /run/dsh-token ]; then
+    echo "[entrypoint] 警告:60 秒内未捕获 dsh token" >&2
+fi
+
+# ---------- 启动局域网鉴权壳 ----------
+node /usr/local/bin/auth-proxy.js &
+PROXYPID=$!
+
+trap 'kill "$DSPID" "$LOGPID" "$PROXYPID" 2>/dev/null || true' TERM INT EXIT
+wait "$PROXYPID"

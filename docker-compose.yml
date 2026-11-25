@@ -7,14 +7,23 @@ services:
     image: ownspire/workbench:0.2.2-rc.5
     container_name: workbench
     ports:
-      # 只绑宿主回环:单用户本地部署的隐私边界;远程访问走 SSH 隧道或 Tailscale,
-      # 改成 "3080:3080" 即暴露到局域网(不建议)
-      - "127.0.0.1:3080:3080"
+      # 默认放开到局域网;流量先过容器内鉴权壳(登录页 + Cookie),dsh 本身只听 127.0.0.1:3081
+      # 只给本机用可把 BIND_IP 改成 127.0.0.1
+      - "${BIND_IP:-0.0.0.0}:${HOST_PORT:-3080}:3080"
     env_file:
-      # 可选:不建 .env 也能启动,密钥走 Web UI 设置页
+      # 可选:不建 .env 也能启动;此时 DATA_DIR 走 ./data,登录密码自动生成并写入挂载目录
       - path: .env
         required: false
+    environment:
+      # 未设置时由 entrypoint 自动生成并持久化
+      AUTH_USER: ${AUTH_USER:-workbench}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      # dsh 对外链接与信任的 Host(按需在 .env 中改成局域网 IP/域名)
+      DSH_PUBLIC_URL: ${DSH_PUBLIC_URL:-}
+      DSH_TRUSTED_HOST: ${DSH_TRUSTED_HOST:-}
     volumes:
-      - ./data/dsh:/data/dsh
-      - ./data/workspace:/data/workspace
+      # DATA_DIR 在 .env 中配置(相对路径以本文件所在目录为基准)
+      - ${DATA_DIR:-./data}/dsh:/data/dsh
+      - ${DATA_DIR:-./data}/workspace:/data/workspace
     restart: unless-stopped

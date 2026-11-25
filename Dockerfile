@@ -1,9 +1,9 @@
-ARG NODE_TAG=26-slim
+# 用完整 node 镜像(非 slim):自带 git 与编译工具链,agent 场景缺件风险更低
+ARG NODE_TAG=26
 FROM node:${NODE_TAG}
 
-# socat 仅作 dsh 不支持 --host 时的兜底转发
 # 开发常用工具(为 agent 的工作环境预装):
-#   git bash curl wget ca-certificates   — 基础工具链(slim 默认不带 git,缺它 UI 建不了工作空间)
+#   git bash curl wget ca-certificates   — 基础工具链(完整镜像已自带,显式安装保证工具齐全)
 #   openssh-client                       — git 走 SSH 拉取
 #   build-essential python3              — 编译原生模块(node-gyp)/脚本执行
 #   jq ripgrep fd-find tree              — agent 检索与数据处理的高频工具
@@ -14,7 +14,6 @@ RUN apt-get update \
         build-essential python3 \
         jq ripgrep fd-find tree \
         unzip zip less procps sqlite3 \
-        socat \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd
 
@@ -26,6 +25,7 @@ RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} && npm cache clean --force
 ENV HOME=/data/dsh
 WORKDIR /data/workspace
 
+COPY auth-proxy.js /usr/local/bin/auth-proxy.js
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

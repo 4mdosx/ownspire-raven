@@ -6,45 +6,131 @@ meta 层工作任务。设计文档见 `/Users/token/WorkBuddy/Claw/Workbench/DE
 ## 快速启动
 
 ```bash
-cp .env.example .env       # 填入 DEEPSEEK_API_KEY(可选,也可启动后在设置页填)
+cp .env.example .env       # 可选:改 DATA_DIR / BIND_IP / 登录凭据
 docker compose up -d --build
-docker logs workbench | tail   # 取首次访问 URL(带 token)
+docker logs workbench | tail   # 取首次生成的登录密码(若 .env 未设 AUTH_PASSWORD)
 ```
 
-浏览器打开日志里的 `http://127.0.0.1:3080/?token=...`。首次进入 Web UI →
-设置 → 模型,填 DeepSeek API key(官方地址 `https://api.deepseek.com`)。
-密钥持久化在挂载目录里,重建容器不丢。
+浏览器打开 `http://<宿主IP>:3080/`(本机也可 `http://127.0.0.1:3080/`),
+会先看到登录页。默认用户名 `workbench`,密码首次启动随机生成并打印在日志里,
+也保存在 `${DATA_DIR}/dsh/auth-password`。登录一次拿到 Cookie 后 7 天免登录。
+dsh 自带的 token 由鉴权壳自动注入,地址里不用再手写 `?token=...`。
+首次进入 Web UI → 设置 → 模型,填 DeepSeek API key(官方地址
+`https://api.deepseek.com`)。密钥持久化在挂载目录里,重建容器不丢。
+
+## 自定义数据目录
+
+宿主挂载根目录由 `.env` 里的 `DATA_DIR` 决定,默认 `./data`(相对
+`docker-compose.yml` 所在目录),也支持绝对路径：
+
+```bash
+# .env
+DATA_DIR=/opt/workbench-data        # 绝对路径
+# DATA_DIR=../workbench-data        # 相对 compose 文件所在目录
+```
+
+该目录下仍固定分两个子目录：`dsh/`(配置、凭据、会话轨迹)和
+`workspace/`(agent 工作区)；容器内路径 `/data/dsh`、`/data/workspace`
+不变,所以改 `DATA_DIR` 不需要改镜像或 entrypoint。
+
+注意：改 `DATA_DIR` 等于指向一个新的空数据目录,旧数据不会自动搬迁。
+迁移时先把旧目录的两个子目录拷到新目录,再 `docker compose up -d`。
+
+## 局域网访问与鉴权
+
+容器里跑了一个轻量鉴权壳(`auth-proxy.js`),dsh 只听容器内回环,局域网流量
+必须先过登录页：
+
+```
+局域网设备 ──HTTP──> 宿主 ${BIND_IP}:${HOST_PORT}(默认 0.0.0.0:3080)
+                       └─> 容器 auth-proxy :3080
+                            ├─ /login  登录页 + Cookie 会话(HMAC 签名,7 天)
+                            └─ 其他请求 ──注入 dsh token──> 127.0.0.1:3081(dsh)
+```
+
+相关 `.env` 配置：
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `BIND_IP` / `HOST_PORT` | 宿主监听地址/端口;只给本机用填 `127.0.0.1` | `0.0.0.0` / `3080` |
+| `AUTH_USER` / `AUTH_PASSWORD` | 登录凭据;密码留空则首次启动随机生成并写入 `${DATA_DIR}/dsh/auth-password` | `workbench` / 随机 |
+| `AUTH_SECRET` | Cookie 签名密钥;留空自动生成并持久化,改了会强制所有人重新登录 | 自动生成 |
+| `DSH_PUBLIC_URL` | dsh 日志里打印的对外地址,填局域网 IP/域名才便于复制 | 空(打印 127 地址) |
+| `DSH_TRUSTED_HOST` | dsh 的 browser-trust fence 额外放行 Host;一般不用填,代理已把 Host/Origin 改回上游 authority | 空 |
+
+```bash
+# .env 示例
+BIND_IP=0.0.0.0
+HOST_PORT=3080
+AUTH_USER=workbench
+AUTH_PASSWORD=换个强密码
+DSH_PUBLIC_URL=http://192.168.1.10:3080/
+# DSH_TRUSTED_HOST=extra.example.com:3080   # 仅额外域名需要时填
+```
+
+行为细节：
+
+- 未登录访问任意路径会 303 到 `/login?next=...`;登录成功后设置
+  `HttpOnly + SameSite=Lax` Cookie,`/logout` 清 Cookie。
+- 连续 10 次密码错误会限流 10 分钟;用户名/密码比对走定时安全比较。
+- 代理从 dsh 启动日志里抓 token 写到 `/run/dsh-token`,首次请求注入;
+  检测到 dsh 自己的认证 Cookie 后就不再带 token(否则 dsh 会反复 303)。
+  dsh 重启后 token 变了会自动跟上,不用重新从日志抄 URL。
+- WebSocket 升级同样走鉴权与 token 注入,聊天流式输出不受影响。
+- 代理不转发 `X-Forwarded-*`,并把浏览器 `Origin` 改写为上游 authority,
+  避免 dsh 的 browser-trust fence 对局域网地址返回 403。
+- `/healthz` 可用于探活(token 就绪返回 200,否则 503)。
+
+**安全边界**：当前是明文 HTTP。若局域网不可信,请在上层再套 TLS
+(如 Tailscale / 反向代理 HTTPS),不要把 `0.0.0.0:3080` 直接暴露到公网。
+
+### 构建排障:Docker Hub 证书不匹配
+
+若 `docker compose up -d --build` 报 `x509: certificate is valid for
+*.facebook.com ... not registry-1.docker.io`,是本机/上游 DNS 被劫持,
+`registry-1.docker.io` 被解析到非 Docker 的 IP,不是镜像或代码问题。
+给 Docker Desktop 配 registry mirror 即可(`~/.docker/daemon.json`):
+
+```json
+"registry-mirrors": ["https://docker.m.daocloud.io", "https://docker.1ms.run"]
+```
+
+改完重启 Docker Desktop(`docker desktop restart`),再重新执行 compose 命令。
 
 ## 架构
 
 ```
 宿主 macOS
-└── docker compose
-    └── workbench 容器(node:26-slim,锁版本 @deepseek-ai/dsh)
-        ├── HOME=/data/dsh        → dsh 配置 / 凭据 / 会话轨迹(~/.dsh)
-        ├── WORKDIR=/data/workspace → agent 默认工作区
-        └── dsh web 绑容器自身 IP:3080(dsh 拒绝绑 0.0.0.0,见下)
-宿主挂载 ./data/ ← 以上两个目录;容器销毁重建,数据原样保留
+└── docker compose (${BIND_IP}:${HOST_PORT} -> 容器 3080)
+    └── workbench 容器(node:26 完整镜像,锁版本 @deepseek-ai/dsh)
+        ├── auth-proxy.js :3080    → 登录页 / Cookie 鉴权 / 注入 dsh token
+        ├── dsh web 127.0.0.1:3081 → 只对同容器代理可见
+        ├── HOME=/data/dsh         → dsh 配置 / 凭据 / 会话轨迹(~/.dsh)
+        └── WORKDIR=/data/workspace → agent 默认工作区
+宿主挂载 ${DATA_DIR}(默认 ./data) ← 以上两个目录;容器销毁重建,数据原样保留
 ```
 
-**镜像内置开发工具**(slim 基础上加装,agent 工作环境即开即用):
+**镜像内置开发工具**(基于完整 `node:26` 镜像加装,agent 工作环境即开即用):
 `git` / `bash` / `curl` / `wget` / `openssh-client`(git 走 SSH)/
 `build-essential` + `python3`(原生模块编译)/ `jq` / `ripgrep` / `fd` /
-`tree` / `unzip` / `zip` / `less` / `procps` / `sqlite3` / `socat`(兜底转发)。
+`tree` / `unzip` / `zip` / `less` / `procps` / `sqlite3`。
 缺 git 会导致 UI 无法创建工作空间,所以基础工具链是硬依赖。
 
-**两个实测到的安全事实**(2026-11-24,dsh 0.2.2-rc.5):
+**实测到的安全事实与应对**(2026-11-24/25,dsh 0.2.2-rc.5):
 
 1. dsh **明确拒绝绑 `0.0.0.0`**——官方防 RCE 设计,只接受具体地址。
-   entrypoint 每次启动探测容器自身 IP(`hostname -I`)绑上去,Docker
-   端口映射的 DNAT 流量目的地址就是它,天然兼容。容器重建 IP 变了也没关系,
-   每次启动重新探测。
-2. dsh web 自带访问 token,首次访问 URL 形如
-   `http://127.0.0.1:3080/?token=...`,**在容器日志里**:
-   `docker logs workbench | tail`。无 token 访问一律 401。
+   现在直接绑容器内 `127.0.0.1:3081`,外部只能通过同容器的鉴权壳访问,
+   比之前绑容器 IP 再映射更符合最小暴露面。
+2. dsh web 自带访问 token,原 URL 形如 `http://127.0.0.1:3081/?token=...`。
+   鉴权壳从日志抓取并自动注入,所以局域网端只需登录页账号密码;
+   直接绕过代理访问 3081 仍会被 dsh 以无 token 401 拒绝。
+3. dsh 的 `/api` 有 browser-trust fence。代理把 `Host` 改写回
+   `127.0.0.1:3081` 并用 `--trusted-host` 放行；用域名/别的端口访问时,
+   按上文配 `DSH_TRUSTED_HOST`,否则部分 API 会被拦。
 
-设计原则:**容器是无状态的,`./data/` 是唯一事实。** 升级 dsh 版本 =
-改 compose/Dockerfile 里的版本号重新 build;升级前备份 `data/dsh/`
+设计原则:**容器是无状态的,`DATA_DIR` 指向的宿主目录(默认 `./data/`)是唯一事实。**
+升级 dsh 版本 = 改 compose/Dockerfile 里的版本号重新 build;
+升级前备份 `${DATA_DIR}/dsh/`
 (会话轨迹是 append-only 事件流,是后续工厂审计的地基,丢了不可再生)。
 
 ## 第三方网关接入(Magpie 等 token 网关)
@@ -52,13 +138,13 @@ docker logs workbench | tail   # 取首次访问 URL(带 token)
 dsh 原生支持 OpenAI 兼容网关(模型层是插件,provider 可自由添加),这也是
 DESIGN.md D6 模型路由的实现落点。两条路径:
 
-**路径 A:UI 配置(推荐,落盘在 `data/dsh/`,天然持久)**
+**路径 A:UI 配置(推荐,落盘在 `${DATA_DIR}/dsh/`,天然持久)**
 
 设置 → 模型 → 添加模型提供商 → 自定义模型 API。四个必填:
 Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL、
 协议、模型 ID。
 
-**路径 B:配置文件 `data/dsh/.dsh/profiles/web/cordis.patch.yml`**
+**路径 B:配置文件 `${DATA_DIR}/dsh/.dsh/profiles/web/cordis.patch.yml`**
 
 ```yaml
 - id: llm-pi-ai
@@ -91,25 +177,33 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
 | 路径 | 说明 |
 |---|---|
 | `Dockerfile` | 镜像定义;版本锁在 ARG `DSH_VERSION` |
-| `docker-compose.yml` | 端口 3080;挂载 `./data`;`restart: unless-stopped` |
-| `docker-entrypoint.sh` | 首启建目录、选监听方式 |
-| `.env.example` | `DEEPSEEK_API_KEY` 占位 |
-| `data/` | 运行时数据(gitignore),宿主持有 |
+| `docker-compose.yml` | `${BIND_IP}:${HOST_PORT}` 映射到容器 3080;挂载 `${DATA_DIR}`;`restart: unless-stopped` |
+| `auth-proxy.js` | 登录页 + Cookie 鉴权、反向代理、token 注入、WebSocket 升级 |
+| `docker-entrypoint.sh` | 生成/恢复凭据、启动 dsh(127.0.0.1:3081)并抓 token、拉起鉴权壳 |
+| `.env.example` | `DATA_DIR`、端口、登录凭据、dsh 对外地址等占位 |
+| `.env` | 本地环境变量(不入库),见「自定义数据目录」「局域网访问与鉴权」 |
+| `data/` | 默认运行时数据目录(gitignore),宿主持有 |
 
 **容器部署的已知边界**(2026-11-24 实测):
 
 - UI 的「打开配置文件」按钮在容器里**不可用**——它调系统编辑器
   (`open`/`xdg-open`),容器里没有。配置文件直接在宿主编:
-  `data/dsh/.dsh/profiles/web/cordis.patch.yml`,改完 `docker compose restart`
-- 容器重启后访问 token 会变,重新 `docker logs workbench | tail` 取新 URL
-- 镜像已内置 `git`/`bash`/`curl`:slim 镜像默认不带 git,缺它会导致
-  UI「无法创建默认工作空间」
+  `${DATA_DIR}/dsh/.dsh/profiles/web/cordis.patch.yml`(默认 `data/dsh/...`),
+  改完 `docker compose restart`
+- 容器重启后 dsh token 会变,但鉴权壳会自动抓取注入,登录地址不变;
+  只有需要直连 dsh 调试时才去 `docker logs workbench | tail` 取 token
+- 镜像已内置 `git`/`bash`/`curl`:完整 `node:26` 自带 git,Dockerfile
+  里仍显式安装以保证工具齐全;缺 git 会导致 UI「无法创建默认工作空间」
+- 偶发「新建会话失败:dsh-scope: scope key is already bound to a parent」:
+  dsh 0.2.2-rc.5 在复用预设不一致的空白会话时可能留下进程内旧绑定。
+  `docker compose restart workbench` 即可清掉(不丢数据),再新建一次会把该空白会话
+  的预设更新为当前默认值;若反复出现,删掉那个旧空白会话
 
 ## 升级与风险
 
 - dsh 处于 developer preview,官方明示会有破坏性变更 → **版本锁死在
   Dockerfile,不追 latest**;升级前跑通一次冒烟(启动 + 发一条消息 + 会话可恢复)
-- 会话轨迹、凭据都在 `./data/dsh/`;整机迁移 = 拷走这一个目录
+- 会话轨迹、凭据都在 `${DATA_DIR}/dsh/`(默认 `./data/dsh/`);整机迁移 = 拷走这一个目录
 - 插件启用前人工审核(DESIGN.md R2),一期默认不装任何社区插件
 
 ## 阶段一验收(DESIGN.md)
