@@ -212,6 +212,8 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
    ```json
    {
      "dependencies": {
+       "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
+       "@deepseek-ai/schemastery": "3.19.0",
        "@local/dsh-ravelle-preset": "link:/data/dsh/default/ravelle-preset",
        "@local/ravelle-skin": "link:/data/dsh/default/ravelle-skin"
      },
@@ -237,16 +239,20 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
    docker exec -e CI=true workbench dsh plugin --profile web install --no-frozen-lockfile
    ```
 
-3. **每个本地插件自己的依赖要装到插件目录里**。Node 从插件真实路径找
-   `node_modules`,不会去 profile 的 hoisted 目录;漏这步会报
+3. **让插件目录能解析到 profile 的 hoisted 依赖**。Node 从插件真实路径
+   `/data/dsh/default/<plugin>` 找 `node_modules`,不会向上走到 profile 的
+   hoisted 目录;漏这步会报
    `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`:
-
+   
    ```bash
-   docker exec -e CI=true workbench sh -c \
-     'cd /data/dsh/default/ravelle-skin && pnpm install --ignore-workspace --no-frozen-lockfile'
-   # ravelle-preset 无 dependencies,不用装
+   docker exec workbench sh -c \
+     '[ -e /data/dsh/default/ravelle-skin/node_modules ] || ln -s /data/dsh/.dsh/profiles/web/node_modules /data/dsh/default/ravelle-skin/node_modules'
+   # ravelle-preset 无依赖,不用建链接
    ```
 
+   别用一次性的 `pnpm install --ignore-workspace` 把依赖装进插件目录:
+   之后 UI 里动插件会让 pnpm 重排,那个目录会被清掉。声明在第 1 步的
+   profile `dependencies` 里,再由 pnpm 固定维护,才是稳的。
    缺 peer 的警告是正常的,dsh 的 runtime resolution 会提供 `cordis` 等宿主包。
 
 4. 重启容器生效,核对配置树:
@@ -256,6 +262,11 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
    docker logs --tail 20 workbench          # 不应再出现 skipping profile bundle
    docker exec workbench dsh web --dump-config | grep ravelle
    ```
+
+新建会话报 `no agent factory registered (load an agent-loop plugin)` 时,
+先看启动日志有没有 `entry did not activate` 或 `skipping profile bundle`。
+本次原因是皮肤插件依赖解析失败、dsh 在依赖目录半更新状态下启动;按上面
+修好依赖后重启就恢复,预设和 persona 本身没问题。
 
 换别的本地插件:替换目录路径与 `package.json` 里的包名即可;包名必须和插件
 自己的 `package.json` 中 `name` 一致。
