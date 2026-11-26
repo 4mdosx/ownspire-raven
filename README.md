@@ -33,6 +33,12 @@ DATA_DIR=/opt/workbench-data        # 绝对路径
 `workspace/`(agent 工作区)；容器内路径 `/data/dsh`、`/data/workspace`
 不变,所以改 `DATA_DIR` 不需要改镜像或 entrypoint。
 
+容器内 `HOME=/data/workspace`、`DSH_HOME=/data/dsh/.dsh`：UI 的目录选择器从
+`/data/workspace` 起，新建工作区默认落在 `${DATA_DIR}/workspace/`；dsh 的
+profile 和会话轨迹仍在 `${DATA_DIR}/dsh/.dsh/`，鉴权凭据仍在 `${DATA_DIR}/dsh/`。
+首次默认工作区的 `documentsDirectory` 也在 web profile 的 `cordis.patch.yml`
+中指向 `/data/workspace`。
+
 注意：改 `DATA_DIR` 等于指向一个新的空数据目录,旧数据不会自动搬迁。
 用下面的 `migrate.sh` 过滤打包后恢复,或直接把旧目录的两个子目录拷到新目录,
 再 `docker compose up -d`。
@@ -134,8 +140,8 @@ DSH_PUBLIC_URL=http://192.168.1.10:3080/
     └── workbench 容器(node:26 完整镜像,锁版本 @deepseek-ai/dsh)
         ├── auth-proxy.js :3080    → 登录页 / Cookie 鉴权 / 注入 dsh token
         ├── dsh web 127.0.0.1:3081 → 只对同容器代理可见
-        ├── HOME=/data/dsh         → dsh 配置 / 凭据 / 会话轨迹(~/.dsh)
-        └── WORKDIR=/data/workspace → agent 默认工作区
+        ├── HOME=/data/workspace    → UI 目录选择器起点 / agent shell 的 ~
+        └── DSH_HOME=/data/dsh/.dsh → dsh 配置 / 会话轨迹(凭据在 /data/dsh)
 宿主挂载 ${DATA_DIR}(默认 ./data) ← 以上两个目录;容器销毁重建,数据原样保留
 ```
 

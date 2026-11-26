@@ -15,6 +15,9 @@ services:
       - path: .env
         required: false
     environment:
+      # HOME 只决定 UI 目录选择器起点/agent shell 的 ~;dsh 配置走 DSH_HOME,鉴权凭据仍写 /data/dsh
+      HOME: /data/workspace
+      DSH_HOME: /data/dsh/.dsh
       # 未设置时由 entrypoint 自动生成并持久化
       AUTH_USER: ${AUTH_USER:-workbench}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}

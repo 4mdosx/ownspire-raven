@@ -21,8 +21,10 @@ RUN apt-get update \
 ARG DSH_VERSION=0.2.2-rc.5
 RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} && npm cache clean --force
 
-# 数据目录:HOME 即 ~/.dsh 所在,由宿主挂载持有
-ENV HOME=/data/dsh
+# 数据目录:HOME 决定 UI 目录选择器的起点和 agent shell 的 ~,DSH_HOME 决定 dsh 配置根
+# 两者拆开:工作区默认落 /data/workspace,而配置/凭据/会话轨迹继续留在 /data/dsh
+ENV HOME=/data/workspace
+ENV DSH_HOME=/data/dsh/.dsh
 WORKDIR /data/workspace
 
 COPY auth-proxy.js /usr/local/bin/auth-proxy.js

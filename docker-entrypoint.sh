@@ -1,15 +1,18 @@
 #!/bin/sh
 set -e
 
-HOME_DIR="${HOME:-/data/dsh}"
-mkdir -p "$HOME_DIR" /data/workspace /run
-cd /data/workspace
+# HOME 用于 UI 目录选择器/agent shell 的 ~;dsh 配置根是 $DSH_HOME(=~/.dsh)
+export HOME="${HOME:-/data/workspace}"
+export DSH_HOME="${DSH_HOME:-/data/dsh/.dsh}"
+AUTH_HOME="/data/dsh"
+mkdir -p "$AUTH_HOME" "$DSH_HOME" "$HOME" /run
+cd "$HOME"
 
 # ---------- 鉴权凭据(首次启动自动生成并持久化) ----------
 AUTH_USER="${AUTH_USER:-workbench}"
 export AUTH_USER
 
-SECRET_FILE="$HOME_DIR/auth-secret"
+SECRET_FILE="$AUTH_HOME/auth-secret"
 if [ -z "${AUTH_SECRET:-}" ]; then
     if [ -s "$SECRET_FILE" ]; then
         AUTH_SECRET=$(cat "$SECRET_FILE")
@@ -21,7 +24,7 @@ if [ -z "${AUTH_SECRET:-}" ]; then
 fi
 export AUTH_SECRET
 
-PASSWORD_FILE="$HOME_DIR/auth-password"
+PASSWORD_FILE="$AUTH_HOME/auth-password"
 if [ -z "${AUTH_PASSWORD:-}" ]; then
     if [ -s "$PASSWORD_FILE" ]; then
         AUTH_PASSWORD=$(cat "$PASSWORD_FILE")
