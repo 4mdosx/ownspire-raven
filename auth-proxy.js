@@ -125,7 +125,7 @@ function recordFailure(ip) {
   failures.set(ip, r);
 }
 
-function upstreamHeaders(req) {
+function upstreamHeaders(req, stripDshAuth = false) {
   const h = Object.assign({}, req.headers);
   h.host = `${UPSTREAM_HOST}:${UPSTREAM_PORT}`;
   // dsh 的 browser-trust fence 会校验 Origin;浏览器看到的是局域网地址,
@@ -139,7 +139,9 @@ function upstreamHeaders(req) {
     h.cookie = h.cookie
       .split(';')
       .map((s) => s.trim())
-      .filter((s) => s && !s.startsWith(`${COOKIE_NAME}=`))
+      .filter((s) => s
+        && !s.startsWith(`${COOKIE_NAME}=`)
+        && !(stripDshAuth && s.startsWith('dsh-auth-')))
       .join('; ');
     if (!h.cookie) delete h.cookie;
   }
@@ -150,22 +152,39 @@ function hasDshCookie(req) {
   return /(^|;\s*)dsh-auth-/.test(req.headers.cookie || '');
 }
 
+function dshCookieNames(req) {
+  return (req.headers.cookie || '')
+    .split(';')
+    .map((s) => s.trim().split('=')[0])
+    .filter((name) => name && name.startsWith('dsh-auth-'));
+}
+
 // 用字符串处理而不是 URLSearchParams:dsh 前端用 "plugins/??a,b,c" 这种
 // 双问号查询串预加载模块,URLSearchParams 会把整串重新编码,导致模块加载失败。
-function withToken(reqUrl, token, dshCookiePresent) {
+function withToken(reqUrl, token, dshCookiePresent, force = false) {
   const q = reqUrl.indexOf('?');
   const pathname = q === -1 ? reqUrl : reqUrl.slice(0, q);
   const search = q === -1 ? '' : reqUrl.slice(q + 1);
-  const hasToken = /(^|&)token=/.test(search);
+  const parts = search ? search.split('&') : [];
+  const withoutToken = parts.filter((p) => !p.startsWith('token='));
+  const hasToken = parts.length !== withoutToken.length;
+  const isIndex = pathname === '/' || pathname === '';
+  const isConnect = pathname === '/connect';
+  const clean = withoutToken.length ? `${pathname}?${withoutToken.join('&')}` : pathname;
 
-  // dsh 见到 token 就会重新认证并 303;已有 dsh Cookie 时不能再带 token
-  if (dshCookiePresent) {
-    if (!hasToken) return reqUrl;
-    const kept = search.split('&').filter((p) => !p.startsWith('token='));
-    return kept.length ? `${pathname}?${kept.join('&')}` : pathname;
+  if (force) return `${pathname}?${[...withoutToken, `token=${token}`].join('&')}`;
+
+  // token 只用于两个入口:首页换 v1 Cookie、/connect 换 v2 API Cookie。
+  // 其他路径(尤其 plugins/??... 静态包)塞 token 会被 dsh 当模块名解析成 404。
+  if (isConnect) {
+    if (!token || hasToken) return reqUrl;
+    return `${pathname}?${search ? `${search}&` : ''}token=${token}`;
   }
-  if (!token || hasToken) return reqUrl;
-  return `${pathname}?${search ? `${search}&` : ''}token=${token}`;
+  if (isIndex && !dshCookiePresent && token && !hasToken) {
+    return `${pathname}?${search ? `${search}&` : ''}token=${token}`;
+  }
+  // 已有 Cookie 的首页不能再带 token,否则 dsh 反复 303。
+  return hasToken ? clean : reqUrl;
 }
 
 function handleLogin(req, res, url) {
@@ -203,19 +222,40 @@ function handleLogin(req, res, url) {
   });
 }
 
-function forward(req, res, url) {
+function forward(req, res, url, retry = false) {
   const token = getToken();
   if (!token) return send(res, 503, 'dsh 尚未就绪:未获取到访问 token');
-  const path = withToken(req.url, token, hasDshCookie(req));
+  const staleCookies = retry ? dshCookieNames(req) : [];
+  const path = withToken(req.url, token, hasDshCookie(req), retry);
 
   const upstream = http.request({
     host: UPSTREAM_HOST,
     port: UPSTREAM_PORT,
     method: req.method,
     path,
-    headers: upstreamHeaders(req),
+    headers: upstreamHeaders(req, retry),
   }, (upRes) => {
-    res.writeHead(upRes.statusCode || 502, upRes.headers);
+    // 旧 Cookie 会让首页鉴权返回 401。重试一次:带新 token,剥掉旧 dsh Cookie,
+    // 让 dsh 重新签发;浏览器再跟 303 到干净首页即可恢复。
+    const isIndex = (req.method === 'GET' || req.method === 'HEAD')
+      && (url.pathname === '/' || url.pathname === '');
+    if (!retry && isIndex && upRes.statusCode === 401) {
+      upRes.resume();
+      return forward(req, res, url, true);
+    }
+
+    const headers = { ...upRes.headers };
+    if (staleCookies.length) {
+      const clearing = staleCookies.map(
+        (name) => `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict`,
+      );
+      const existing = headers['set-cookie'];
+      headers['set-cookie'] = [
+        ...clearing,
+        ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+      ];
+    }
+    res.writeHead(upRes.statusCode || 502, headers);
     upRes.pipe(res);
   });
   upstream.on('error', (err) => {
@@ -223,7 +263,8 @@ function forward(req, res, url) {
     if (!res.headersSent) send(res, 502, 'Bad Gateway');
     else res.destroy();
   });
-  req.pipe(upstream);
+  if (req.method === 'GET' || req.method === 'HEAD') upstream.end();
+  else req.pipe(upstream);
 }
 
 const server = http.createServer((req, res) => {

@@ -108,9 +108,14 @@ DSH_PUBLIC_URL=http://192.168.1.10:3080/
 - 未登录访问任意路径会 303 到 `/login?next=...`;登录成功后设置
   `HttpOnly + SameSite=Lax` Cookie,`/logout` 清 Cookie。
 - 连续 10 次密码错误会限流 10 分钟;用户名/密码比对走定时安全比较。
-- 代理从 dsh 启动日志里抓 token 写到 `/run/dsh-token`,首次请求注入;
-  检测到 dsh 自己的认证 Cookie 后就不再带 token(否则 dsh 会反复 303)。
-  dsh 重启后 token 变了会自动跟上,不用重新从日志抄 URL。
+- 代理从 dsh 启动日志里抓 token 写到 `/run/dsh-token` 并自动注入。
+  首页 `/` 已有 dsh Cookie 时不带 token(否则 token 会反复 303),
+  但 `/connect` 始终带 token —— 它每次连接都要用 token 换 API Cookie。
+  其他路径(尤其 `plugins/??...` 静态包)**一律不带 token**,否则 dsh 会把
+  `token=...` 当模块名解析,返回 404,前端报
+  `client-modules: HTML did not preload .../client.js`。
+  旧 dsh Cookie 撞上新 token 时,代理收到 401 会重试一次:带新 token、
+  清掉旧 Cookie,让 dsh 重新签发,所以容器重启后不用手动清浏览器 Cookie。
 - WebSocket 升级同样走鉴权与 token 注入,聊天流式输出不受影响。
 - 代理不转发 `X-Forwarded-*`,并把浏览器 `Origin` 改写为上游 authority,
   避免 dsh 的 browser-trust fence 对局域网地址返回 403。
@@ -118,19 +123,6 @@ DSH_PUBLIC_URL=http://192.168.1.10:3080/
 
 **安全边界**：当前是明文 HTTP。若局域网不可信,请在上层再套 TLS
 (如 Tailscale / 反向代理 HTTPS),不要把 `0.0.0.0:3080` 直接暴露到公网。
-
-### 构建排障:Docker Hub 证书不匹配
-
-若 `docker compose up -d --build` 报 `x509: certificate is valid for
-*.facebook.com ... not registry-1.docker.io`,是本机/上游 DNS 被劫持,
-`registry-1.docker.io` 被解析到非 Docker 的 IP,不是镜像或代码问题。
-给 Docker Desktop 配 registry mirror 即可(`~/.docker/daemon.json`):
-
-```json
-"registry-mirrors": ["https://docker.m.daocloud.io", "https://docker.1ms.run"]
-```
-
-改完重启 Docker Desktop(`docker desktop restart`),再重新执行 compose 命令。
 
 ## 架构
 
@@ -206,6 +198,67 @@ Provider ID(小写,**保存后不可改名**,会话日志引用它)、Base URL�
   cordis.patch.yml 同层加 `compat: { supportsDeveloperRole: false, maxTokensField: max_tokens }`
   (这类兼容性配置不在 UI 表单里)
 - 改 patch 前可用 `dsh --profile web --dump-config` 打印整棵插件树核对
+
+## 本地插件(out-of-tree bundle)
+
+以 `${DATA_DIR}/dsh/default/ravelle-preset`、`ravelle-skin` 为例。它们挂在
+`/Users/token/dshdata/dsh/default/...`,容器内对应 `/data/dsh/default/...`。
+镜像已装 pnpm(ARG `PNPM_VERSION`,当前 10.34.9)——`dsh plugin` 只是把参数
+转发给 profile 目录里的 pnpm,所以**没装 pnpm 时任何 `dsh plugin` 命令都会失败**。
+
+1. 编辑 `${DATA_DIR}/dsh/.dsh/profiles/web/package.json`,加依赖和 bundle
+   顺序(bundle 列表决定 patch 层应用顺序,本地包放最后便于覆盖)：
+
+   ```json
+   {
+     "dependencies": {
+       "@local/dsh-ravelle-preset": "link:/data/dsh/default/ravelle-preset",
+       "@local/ravelle-skin": "link:/data/dsh/default/ravelle-skin"
+     },
+     "dsh": {
+       "profile": {
+         "bundles": [
+           "@deepseek-ai/dsh-base",
+           "@deepseek-ai/dsh-web-app",
+           "@deepseek-ai/dsh-experimental-auto-review",
+           "@deepseek-ai/dsh-experimental-voice-input-bundle",
+           "@deepseek-ai/dsh-personalized-recommendations",
+           "@local/dsh-ravelle-preset",
+           "@local/ravelle-skin"
+         ]
+       }
+     }
+   }
+   ```
+
+2. 让 pnpm 建立链接(`link:` 依赖,锁文件会变,所以要 `--no-frozen-lockfile`):
+
+   ```bash
+   docker exec -e CI=true workbench dsh plugin --profile web install --no-frozen-lockfile
+   ```
+
+3. **每个本地插件自己的依赖要装到插件目录里**。Node 从插件真实路径找
+   `node_modules`,不会去 profile 的 hoisted 目录;漏这步会报
+   `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'`:
+
+   ```bash
+   docker exec -e CI=true workbench sh -c \
+     'cd /data/dsh/default/ravelle-skin && pnpm install --ignore-workspace --no-frozen-lockfile'
+   # ravelle-preset 无 dependencies,不用装
+   ```
+
+   缺 peer 的警告是正常的,dsh 的 runtime resolution 会提供 `cordis` 等宿主包。
+
+4. 重启容器生效,核对配置树:
+
+   ```bash
+   docker restart workbench
+   docker logs --tail 20 workbench          # 不应再出现 skipping profile bundle
+   docker exec workbench dsh web --dump-config | grep ravelle
+   ```
+
+换别的本地插件:替换目录路径与 `package.json` 里的包名即可;包名必须和插件
+自己的 `package.json` 中 `name` 一致。
 
 ## 目录
 

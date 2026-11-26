@@ -21,6 +21,11 @@ RUN apt-get update \
 ARG DSH_VERSION=0.2.2-rc.5
 RUN npm install -g @deepseek-ai/dsh@${DSH_VERSION} && npm cache clean --force
 
+# dsh plugin 命令把参数转发给 pnpm;本地 profile 插件(out-of-tree bundle)必需
+# dsh-app-boot 要求 pnpm >= 10 且用 hoisted linker,版本锁死避免行为漂移。
+ARG PNPM_VERSION=10.34.9
+RUN npm install -g pnpm@${PNPM_VERSION}
+
 # 数据目录:HOME 决定 UI 目录选择器的起点和 agent shell 的 ~,DSH_HOME 决定 dsh 配置根
 # 两者拆开:工作区默认落 /data/workspace,而配置/凭据/会话轨迹继续留在 /data/dsh
 ENV HOME=/data/workspace
